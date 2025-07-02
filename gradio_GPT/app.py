@@ -130,6 +130,18 @@ def extract_metadata_with_gpt(image):
         # Parse the response
         content = response.choices[0].message.content
         
+        # Get usage statistics for cost calculation
+        usage = response.usage
+        input_tokens = usage.prompt_tokens
+        output_tokens = usage.completion_tokens
+        total_tokens = usage.total_tokens
+        
+        # Calculate cost (GPT-4o pricing as of 2024)
+        # Input: $0.005 per 1K tokens, Output: $0.015 per 1K tokens
+        input_cost = (input_tokens / 1000) * 0.005
+        output_cost = (output_tokens / 1000) * 0.015
+        total_cost = input_cost + output_cost
+        
         # Try to parse as JSON
         try:
             # Remove markdown code block formatting if present
@@ -146,16 +158,20 @@ def extract_metadata_with_gpt(image):
                 content = '\n'.join(lines[1:-1])  # Remove first and last line (``` markers)
             
             metadata = json.loads(content)
-            # Add processing timestamp
+            # Add processing timestamp and cost info
             metadata["processed_at"] = "2024-01-01"  # You can use datetime.now().isoformat() 
             metadata["processing_method"] = "GPT-4o"
+            metadata["tokens_used"] = f"{total_tokens} ({input_tokens} input + {output_tokens} output)"
+            metadata["estimated_cost"] = f"${total_cost:.4f}"
             return metadata
         except json.JSONDecodeError:
             # If JSON parsing fails, return error info
             return {
                 "error": "Failed to parse GPT response as JSON",
                 "raw_response": content,
-                "processing_method": "GPT-4o"
+                "processing_method": "GPT-4o",
+                "tokens_used": f"{total_tokens} ({input_tokens} input + {output_tokens} output)",
+                "estimated_cost": f"${total_cost:.4f}"
             }
             
     except Exception as e:
@@ -193,7 +209,9 @@ def format_metadata_as_table(metadata):
         "confidence_score": "Confidence Score",
         "notes": "Notes",
         "processed_at": "Processed At",
-        "processing_method": "Processing Method"
+        "processing_method": "Processing Method",
+        "tokens_used": "Tokens Used",
+        "estimated_cost": "Estimated Cost"
     }
     
     # Build the table data
@@ -331,7 +349,7 @@ if __name__ == "__main__":
     demo.launch(
         server_name="127.0.0.1",
         server_port=7860,
-        share=False,  # Set to True if you want to create a public link
+        share=True,  # Set to True to create a public link
         show_error=True,
         quiet=False
     ) 
