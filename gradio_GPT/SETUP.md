@@ -25,29 +25,29 @@ Visit: http://127.0.0.1:7860
 
 ## 🔧 Features
 
-- **GPT-4 Vision Integration**: Uses OpenAI's latest vision model for accurate text extraction
-- **Image Preprocessing**: OpenCV-based image enhancement for better results  
-- **Structured JSON Output**: Clean, consistent metadata format
-- **Confidence Scoring**: AI-powered reliability assessment
+- **GPT-4o Integration**: Uses OpenAI's latest multimodal model for accurate text extraction with intelligent inference
+- **Smart Inference**: Makes educated guesses from typography, design elements, and visual style cues
+- **Formatted Table Output**: Clean, organized display with visual icons and structured data
+- **Confidence Scoring**: AI-powered reliability assessment with detailed reasoning
 - **Modern UI**: Beautiful Gradio interface with custom styling
 
-## 📋 Expected JSON Output
+## 📋 Expected Table Output
 
-```json
-{
-  "title": "The Great Gatsby",
-  "author": "F. Scott Fitzgerald", 
-  "year": "1925",
-  "publisher": "Scribner",
-  "genre": "Classic Literature",
-  "condition": "Good",
-  "isbn": "Not visible",
-  "edition": "First Edition",
-  "language": "English",
-  "confidence_score": 85,
-  "notes": "Classic American novel cover"
-}
-```
+The results are displayed as a formatted table with fields like:
+
+| Field | Value |
+|-------|-------|
+| 📚 Title | The Great Gatsby |
+| ✍️ Author | F. Scott Fitzgerald |
+| 📅 Year | 1925 |
+| 🏢 Publisher | Scribner |
+| 📖 Genre | Classic Literature |
+| 🔍 Condition | Good |
+| 🔢 ISBN | Not visible |
+| 📃 Edition | First Edition |
+| 🌐 Language | English |
+| 🎯 Confidence Score | 85% |
+| 📝 Notes | Classic American novel cover with art deco design elements |
 
 ## 🛠️ Troubleshooting
 
