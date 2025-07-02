@@ -81,17 +81,26 @@ def extract_metadata_with_gpt(image):
             "notes": "Additional observations and reasoning"
         }
 
-        Guidelines for intelligent inference:
-        - Use typography, design elements, and visual style to infer publication era
-        - Analyze cover art style, color schemes, and layout to determine genre
-        - Infer publisher from distinctive design patterns, logos, or typography styles
-        - Use context clues like series information, award badges, or price stickers
-        - Consider spine design, binding style, and wear patterns for condition assessment
-        - Make educated guesses about edition (first, mass market, hardcover, etc.) from visual cues
-        - Infer language from visible text, character sets, and cultural visual elements
-        - Only use "Not visible" when absolutely no inference can be made from any visual element
-        - Explain your reasoning in the notes field
-        - Be confident in reasonable inferences while noting uncertainty levels
+        CRITICAL INFERENCE GUIDELINES:
+        - NEVER use "Not visible" unless absolutely impossible to infer anything
+        - ALWAYS make educated guesses using visual, contextual, and historical clues
+        - Use typography styles, design trends, and aesthetic elements to determine publication decade
+        - Infer publisher from design patterns, author associations, and market positioning
+        - Consider bestseller badges, awards, price stickers as era and publisher indicators
+        - Use author's typical publishing history and book series context
+        - Analyze cover art style, color palettes, and layout to determine genre and era
+        - Make reasonable assumptions about edition type from cover design and quality
+        - Use context clues like "New York Times Bestseller" to infer timeframe and publisher caliber
+        - Cross-reference visual design with known publishing trends by decade
+        - For popular books, use your knowledge of when major titles were published
+        - Be confident in reasonable inferences - explaining your logic in notes
+        - Only mark fields as unknown when truly no reasonable inference exists
+
+        EXAMPLES OF GOOD INFERENCE:
+        - Modern sans-serif typography + bestseller badge = likely 2000s-2010s publication
+        - Art deco design elements = likely 1920s-1940s or modern retro edition
+        - Mass market paperback appearance = likely major publisher like Penguin, Bantam, etc.
+        - Award badges and quotes = indicates established publisher and recent publication
 
         Return only valid JSON, no additional text.
         """
