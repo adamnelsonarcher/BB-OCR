@@ -54,7 +54,7 @@ def encode_image_to_base64(image):
 
 def extract_metadata_with_gpt(image):
     """
-    Use GPT-4 Vision to analyze the book image and extract metadata.
+    Use GPT-4o to analyze the book image and extract metadata.
     """
     try:
         # Encode image
@@ -89,7 +89,7 @@ def extract_metadata_with_gpt(image):
         
         # Make API call to GPT-4 Vision
         response = client.chat.completions.create(
-            model="gpt-4-vision-preview",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "user",
@@ -117,20 +117,20 @@ def extract_metadata_with_gpt(image):
             metadata = json.loads(content)
             # Add processing timestamp
             metadata["processed_at"] = "2024-01-01"  # You can use datetime.now().isoformat() 
-            metadata["processing_method"] = "GPT-4 Vision"
+            metadata["processing_method"] = "GPT-4o"
             return metadata
         except json.JSONDecodeError:
             # If JSON parsing fails, return error info
             return {
                 "error": "Failed to parse GPT response as JSON",
                 "raw_response": content,
-                "processing_method": "GPT-4 Vision"
+                "processing_method": "GPT-4o"
             }
             
     except Exception as e:
         return {
             "error": f"GPT processing failed: {str(e)}",
-            "processing_method": "GPT-4 Vision"
+            "processing_method": "GPT-4o"
         }
 
 def process_book_image(book_image):
@@ -150,8 +150,8 @@ def process_book_image(book_image):
     processed_image = preprocess_image(book_image)
     print("Image preprocessing complete.")
     
-    # Step 2: Use GPT-4 Vision to extract metadata
-    print("Extracting metadata with GPT-4 Vision...")
+    # Step 2: Use GPT-4o to extract metadata
+    print("Extracting metadata with GPT-4o...")
     extracted_data = extract_metadata_with_gpt(book_image)  # Use original image for GPT
     
     print("Processing complete.")
@@ -192,16 +192,6 @@ def create_demo_interface():
         ],
         title="🔍 Becker Books OCR Tool",
         description="""
-        **Milestone 1: Scan & Identify**
-        
-        Upload a book cover image to extract its metadata using AI-powered image analysis.
-        
-        **Features:**
-        - 🤖 GPT-4 Vision-powered text extraction
-        - 📊 Structured JSON output  
-        - 🎯 Confidence scoring
-        - 📈 Image preprocessing for optimal results
-        
         **Instructions:**
         1. Upload a clear image of a book cover
         2. Wait for AI processing (may take 10-30 seconds)
