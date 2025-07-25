@@ -22,22 +22,6 @@ Usage:
 python test_tesseract.py --image path/to/image.jpg
 ```
 
-### 3. Metadata Extraction Test Script
-
-`test_heuristics.py` - Tests the metadata extraction functionality using heuristic methods.
-
-Usage:
-```bash
-# Use a predefined sample
-python test_heuristics.py --sample invoice
-python test_heuristics.py --sample receipt
-
-# Use a custom text
-python test_heuristics.py --text "Your custom OCR text here"
-
-# Use text from a file
-python test_heuristics.py --file path/to/text_file.txt
-```
 
 ### 4. OCR Engine Comparison Script
 
