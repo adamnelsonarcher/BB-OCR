@@ -1,0 +1,27 @@
+{
+  "image_path": "../dataset\\book5.png",
+  "preprocessing_used": true,
+  "easyocr": {
+    "processing_time": 2.7109999656677246,
+    "text_length": 19,
+    "text": "THA RED MEN OF IOWA",
+    "preprocessed_image": "results/images\\book5_preprocessed.png",
+    "book_metadata": {
+      "title": "THA RED MEN OF IOWA",
+      "author": null,
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 0.36800122261047363,
+    "text_length": 0,
+    "text": "",
+    "preprocessed_image": "results/images\\book5_tesseract_preprocessed.png",
+    "book_metadata": {}
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "image_path": "../dataset\\book3.png",
+  "preprocessing_used": true,
+  "easyocr": {
+    "processing_time": 4.402997255325317,
+    "text_length": 138,
+    "text": "his a boy: Ra Clare by Ith dogs and about classic timeless THE WHERE FERN RED GROWS Wls Vanders Vson Aviner Medal Newbery Oduction int an1",
+    "preprocessed_image": "results/images\\book3_preprocessed.png",
+    "book_metadata": {
+      "title": "his a boy: Ra Clare by Ith dogs and about classic timeless THE WHERE FERN RED GROWS Wls Vanders Vson Aviner Medal Newbery Oduction int an1",
+      "author": null,
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 2.4959959983825684,
+    "text_length": 0,
+    "text": "",
+    "preprocessed_image": "results/images\\book3_tesseract_preprocessed.png",
+    "book_metadata": {}
+  }
+}

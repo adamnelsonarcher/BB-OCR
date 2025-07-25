@@ -1,0 +1,36 @@
+{
+  "image_path": "../dataset\\book6.png",
+  "preprocessing_used": true,
+  "easyocr": {
+    "processing_time": 3.0929980278015137,
+    "text_length": 121,
+    "text": "DwM MICHAEL UW1356 8L.52 MODRCOBK ELRIC OF MELNIBONE Previously published in an edited version entitled THE DREAMING CITX",
+    "preprocessed_image": "results/images\\book6_preprocessed.png",
+    "book_metadata": {
+      "title": "DwM MICHAEL UW1356 8L.52 MODRCOBK ELRIC OF MELNIBONE Previously published in an edited version entitled THE DREAMING CITX",
+      "author": null,
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 0.5310096740722656,
+    "text_length": 25,
+    "text": "d Gd Version entitled \u2018\n\n",
+    "preprocessed_image": "results/images\\book6_tesseract_preprocessed.png",
+    "book_metadata": {
+      "title": "d Gd Version entitled \u2018",
+      "author": null,
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  }
+}

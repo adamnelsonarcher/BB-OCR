@@ -1,0 +1,36 @@
+{
+  "image_path": "../dataset\\book4.png",
+  "preprocessing_used": true,
+  "easyocr": {
+    "processing_time": 3.029001474380493,
+    "text_length": 110,
+    "text": "ALFRED LANSINC Ion Geent Munane Muiuontncc SNr Yoct Tincu Kour Kocilt ENDURANCE Shackleton\"s Incredible Voyage",
+    "preprocessed_image": "results/images\\book4_preprocessed.png",
+    "book_metadata": {
+      "title": "ALFRED LANSINC Ion Geent Munane Muiuontncc SNr Yoct Tincu Kour Kocilt ENDURANCE Shackleton\"s Incredible Voyage",
+      "author": null,
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 0.31999850273132324,
+    "text_length": 54,
+    "text": "ENDURANCE\n\n\u2014\u2014\u2014\u2014 SHACK LETON\u2019S\n\u2014\u2014\u2014\u2014 INCREDIBLE VOYAGE\n\n",
+    "preprocessed_image": "results/images\\book4_tesseract_preprocessed.png",
+    "book_metadata": {
+      "title": "ENDURANCE",
+      "author": "\u2014\u2014\u2014\u2014 SHACK LETON\u2019S",
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  }
+}

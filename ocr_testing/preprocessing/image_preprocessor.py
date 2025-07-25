@@ -8,7 +8,7 @@ class ImagePreprocessor:
     """
     A class to preprocess images for better OCR results.
     Implements various techniques like grayscale conversion, noise removal,
-    thresholding, deskewing, etc.
+    histogram equalization, etc.
     """
     
     def __init__(self):
@@ -43,22 +43,20 @@ class ImagePreprocessor:
         self.steps_applied.append("grayscale")
         return self
     
-    def denoise(self, strength=10):
-        """Remove noise using Gaussian blur"""
+    def denoise(self, strength=7):
+        """Remove noise using Gaussian blur with moderate strength"""
         if self.preprocessed_image is None:
             raise ValueError("No image loaded")
             
-        self.preprocessed_image = cv2.GaussianBlur(self.preprocessed_image, (5, 5), strength)
+        # Use a smaller kernel size (3x3) with moderate strength
+        self.preprocessed_image = cv2.GaussianBlur(self.preprocessed_image, (3, 3), strength)
         self.steps_applied.append(f"denoise(strength={strength})")
         return self
     
-    def threshold(self, method="adaptive"):
+    def equalize_histogram(self):
         """
-        Apply thresholding to the image.
-        
-        Args:
-            method (str): Thresholding method to use.
-                          Options: 'simple', 'otsu', 'adaptive'
+        Apply histogram equalization to improve contrast.
+        This is more effective than harsh thresholding for text recognition.
         """
         if self.preprocessed_image is None:
             raise ValueError("No image loaded")
@@ -67,68 +65,57 @@ class ImagePreprocessor:
         if len(self.preprocessed_image.shape) == 3:
             self.to_grayscale()
             
-        if method == "simple":
-            _, self.preprocessed_image = cv2.threshold(
-                self.preprocessed_image, 127, 255, cv2.THRESH_BINARY
-            )
-        elif method == "otsu":
-            _, self.preprocessed_image = cv2.threshold(
-                self.preprocessed_image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-            )
-        elif method == "adaptive":
-            self.preprocessed_image = cv2.adaptiveThreshold(
-                self.preprocessed_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                cv2.THRESH_BINARY, 11, 2
-            )
-        else:
-            raise ValueError(f"Unknown thresholding method: {method}")
-            
-        self.steps_applied.append(f"threshold({method})")
+        # Apply histogram equalization
+        self.preprocessed_image = cv2.equalizeHist(self.preprocessed_image)
+        self.steps_applied.append("equalize_histogram")
         return self
     
-    def deskew(self):
-        """Detect and correct skew in the image"""
+    def clahe(self, clip_limit=2.0, tile_grid_size=(8, 8)):
+        """
+        Apply Contrast Limited Adaptive Histogram Equalization (CLAHE).
+        This is better than regular histogram equalization for non-uniform lighting.
+        
+        Args:
+            clip_limit (float): Threshold for contrast limiting
+            tile_grid_size (tuple): Size of grid for histogram equalization
+        """
         if self.preprocessed_image is None:
             raise ValueError("No image loaded")
             
         # Ensure image is grayscale
         if len(self.preprocessed_image.shape) == 3:
-            gray = cv2.cvtColor(self.preprocessed_image, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = self.preprocessed_image.copy()
+            self.to_grayscale()
             
-        # Apply threshold to get binary image
-        _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        # Create CLAHE object
+        clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
         
-        # Find all contours
-        contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        
-        # Find the largest contour by area
-        if contours:
-            largest_contour = max(contours, key=cv2.contourArea)
-            
-            # Get the minimum area rectangle that encloses the contour
-            rect = cv2.minAreaRect(largest_contour)
-            angle = rect[2]
-            
-            # Determine the angle to rotate (we want text to be horizontal)
-            if angle < -45:
-                angle = 90 + angle
-            
-            # Rotate the image
-            (h, w) = self.preprocessed_image.shape[:2]
-            center = (w // 2, h // 2)
-            M = cv2.getRotationMatrix2D(center, angle, 1.0)
-            self.preprocessed_image = cv2.warpAffine(
-                self.preprocessed_image, M, (w, h), 
-                flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
-            )
-            
-        self.steps_applied.append("deskew")
+        # Apply CLAHE
+        self.preprocessed_image = clahe.apply(self.preprocessed_image)
+        self.steps_applied.append(f"clahe(clip_limit={clip_limit})")
         return self
     
-    def increase_contrast(self, factor=2.0):
-        """Increase the contrast of the image"""
+    def gentle_threshold(self, block_size=11, constant=2):
+        """
+        Apply a gentle adaptive threshold that preserves more detail.
+        Uses a larger block size and smaller constant for better text preservation.
+        """
+        if self.preprocessed_image is None:
+            raise ValueError("No image loaded")
+            
+        # Ensure image is grayscale
+        if len(self.preprocessed_image.shape) == 3:
+            self.to_grayscale()
+            
+        # Apply adaptive thresholding with THRESH_BINARY (not THRESH_BINARY_INV)
+        self.preprocessed_image = cv2.adaptiveThreshold(
+            self.preprocessed_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+            cv2.THRESH_BINARY, block_size, constant
+        )
+        self.steps_applied.append(f"gentle_threshold(block_size={block_size}, constant={constant})")
+        return self
+    
+    def increase_contrast(self, factor=1.5):
+        """Increase the contrast of the image with a moderate factor"""
         if self.preprocessed_image is None:
             raise ValueError("No image loaded")
             
@@ -138,7 +125,7 @@ class ImagePreprocessor:
         else:
             pil_img = Image.fromarray(self.preprocessed_image)
             
-        # Enhance contrast
+        # Enhance contrast with a moderate factor
         enhancer = ImageEnhance.Contrast(pil_img)
         enhanced_img = enhancer.enhance(factor)
         
@@ -151,8 +138,11 @@ class ImagePreprocessor:
         self.steps_applied.append(f"increase_contrast(factor={factor})")
         return self
     
-    def sharpen(self):
-        """Sharpen the image to improve text clarity"""
+    def sharpen(self, amount=0.3):
+        """
+        Sharpen the image to improve text clarity.
+        Uses a moderate amount to avoid introducing noise.
+        """
         if self.preprocessed_image is None:
             raise ValueError("No image loaded")
             
@@ -162,8 +152,8 @@ class ImagePreprocessor:
         else:
             pil_img = Image.fromarray(self.preprocessed_image)
             
-        # Apply sharpening filter
-        sharpened = pil_img.filter(ImageFilter.SHARPEN)
+        # Apply gentle sharpening filter
+        sharpened = pil_img.filter(ImageFilter.UnsharpMask(radius=1.0, percent=int(amount*100), threshold=3))
         
         # Convert back to OpenCV format
         if len(self.preprocessed_image.shape) == 3:
@@ -171,11 +161,11 @@ class ImagePreprocessor:
         else:
             self.preprocessed_image = np.array(sharpened)
             
-        self.steps_applied.append("sharpen")
+        self.steps_applied.append(f"sharpen(amount={amount})")
         return self
     
-    def remove_borders(self, border_size=10):
-        """Remove potential borders from the image"""
+    def remove_borders(self, border_size=5):
+        """Remove potential borders from the image with a smaller border size"""
         if self.preprocessed_image is None:
             raise ValueError("No image loaded")
             
@@ -186,6 +176,25 @@ class ImagePreprocessor:
         ]
         
         self.steps_applied.append(f"remove_borders(size={border_size})")
+        return self
+    
+    def resize(self, scale_factor=2.0):
+        """
+        Resize the image to improve OCR accuracy.
+        Enlarging small text can help OCR engines recognize it better.
+        """
+        if self.preprocessed_image is None:
+            raise ValueError("No image loaded")
+            
+        h, w = self.preprocessed_image.shape[:2]
+        new_h, new_w = int(h * scale_factor), int(w * scale_factor)
+        
+        self.preprocessed_image = cv2.resize(
+            self.preprocessed_image, (new_w, new_h), 
+            interpolation=cv2.INTER_CUBIC
+        )
+        
+        self.steps_applied.append(f"resize(scale_factor={scale_factor})")
         return self
     
     def save_image(self, output_path):
@@ -212,6 +221,7 @@ class ImagePreprocessor:
 def preprocess_for_book_cover(image_path, output_path=None):
     """
     Apply a series of preprocessing steps optimized for book covers.
+    Uses histogram equalization instead of harsh thresholding.
     
     Args:
         image_path (str): Path to the input image
@@ -222,13 +232,14 @@ def preprocess_for_book_cover(image_path, output_path=None):
     """
     preprocessor = ImagePreprocessor()
     
-    # Apply a series of preprocessing steps
+    # Apply a series of preprocessing steps optimized for book covers
     preprocessor.load_image(image_path)
     preprocessor.to_grayscale()
-    preprocessor.increase_contrast(1.5)
-    preprocessor.denoise(strength=5)
-    preprocessor.sharpen()
-    preprocessor.threshold(method="adaptive")
+    preprocessor.resize(scale_factor=1.5)  # Enlarge image slightly
+    preprocessor.denoise(strength=5)       # Gentle denoising
+    preprocessor.increase_contrast(1.3)    # Moderate contrast enhancement
+    preprocessor.clahe(clip_limit=2.0)     # Better than regular histogram equalization
+    preprocessor.sharpen(amount=0.2)       # Gentle sharpening
     
     # Save the image if output path is provided
     if output_path:

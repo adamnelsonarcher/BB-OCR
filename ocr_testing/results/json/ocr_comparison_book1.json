@@ -1,0 +1,36 @@
+{
+  "image_path": "../dataset\\book1.png",
+  "preprocessing_used": true,
+  "easyocr": {
+    "processing_time": 3.280003309249878,
+    "text_length": 123,
+    "text": "Stone tbe Cosling first novel\" HARRY POTTER Pbilosopber and ROWLING JKS IHOGWARTS] EXPRESS' Acudy sunning Land Tead errilic",
+    "preprocessed_image": "results/images\\book1_preprocessed.png",
+    "book_metadata": {
+      "title": "Stone tbe Cosling first novel\" HARRY POTTER Pbilosopber and ROWLING JKS IHOGWARTS] EXPRESS' Acudy sunning Land Tead errilic",
+      "author": null,
+      "publisher": "EXPRESS",
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": "fiction",
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 0.5429990291595459,
+    "text_length": 49,
+    "text": "( ARR \u2018\nTER |\n\nry Stone\n\nand the Philose\n.K.ROW\n\n",
+    "preprocessed_image": "results/images\\book1_tesseract_preprocessed.png",
+    "book_metadata": {
+      "title": "( ARR \u2018",
+      "author": "TER |",
+      "publisher": null,
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  }
+}
