@@ -22,6 +22,32 @@ Usage:
 python test_tesseract.py --image path/to/image.jpg
 ```
 
+### 3. Metadata Extraction Test Script
+
+`test_heuristics.py` - Tests the metadata extraction functionality using heuristic methods.
+
+Usage:
+```bash
+# Use a predefined sample
+python test_heuristics.py --sample invoice
+python test_heuristics.py --sample receipt
+
+# Use a custom text
+python test_heuristics.py --text "Your custom OCR text here"
+
+# Use text from a file
+python test_heuristics.py --file path/to/text_file.txt
+```
+
+### 4. OCR Engine Comparison Script
+
+`compare_ocr_engines.py` - Compares the performance and results of EasyOCR and Tesseract OCR.
+
+Usage:
+```bash
+python compare_ocr_engines.py --image path/to/image.jpg
+```
+
 ## Requirements
 
 - Python 3.6+
@@ -42,4 +68,5 @@ python test_tesseract.py --image path/to/image.jpg
 ## Notes
 
 - The EasyOCR script will download model files on first run
-- The Tesseract script requires the Tesseract executable to be installed and in your PATH 
+- The Tesseract script requires the Tesseract executable to be installed and in your PATH
+- The comparison script saves detailed results to a JSON file for further analysis 
