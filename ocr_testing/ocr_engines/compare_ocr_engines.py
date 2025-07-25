@@ -6,7 +6,7 @@ import json
 from PIL import Image
 import easyocr
 import pytesseract
-from extractor import extract_metadata_from_text
+from ocr_testing.hueristics.extractor import extract_metadata_from_text
 
 def process_with_easyocr(image_path):
     """

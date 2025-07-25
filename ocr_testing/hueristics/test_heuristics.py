@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import json
-from extractor import extract_metadata_from_text
+from ocr_testing.hueristics.extractor import extract_metadata_from_text
 
 # Sample OCR text blocks for testing
 SAMPLE_INVOICE_TEXT = """
