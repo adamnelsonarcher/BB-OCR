@@ -6,7 +6,13 @@ import json
 from PIL import Image
 import easyocr
 import pytesseract
-from ocr_testing.hueristics.extractor import extract_metadata_from_text
+import sys
+
+# Fix the import to use relative path
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if parent_dir not in sys.path:
+    sys.path.append(parent_dir)
+from hueristics.extractor import extract_metadata_from_text
 
 def process_with_easyocr(image_path):
     """
