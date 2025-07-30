@@ -71,6 +71,8 @@ vlm_testing/
 ├── requirements.txt       # Python dependencies
 ├── environment.yml        # Conda environment file
 ├── run_vlm_test.py        # Main script to run the pipeline
+├── benchmark_image.bat    # Windows script to benchmark a single image
+├── benchmark_image.sh     # Linux/Mac script to benchmark a single image
 ├── run_comparison.bat     # Windows batch script to run the pipeline
 ├── run_comparison.sh      # Linux/Mac shell script to run the pipeline
 └── test_setup.py          # Script to verify the installation
@@ -117,9 +119,42 @@ This script checks:
 
 ### Usage
 
-#### Running the Entire Pipeline
+#### Benchmarking a Single Image
 
-To run the entire VLM testing pipeline:
+To benchmark a single image with both BLIP-2 and LLaVA models:
+
+On Windows:
+```bash
+benchmark_image.bat path\to\image.png
+```
+
+On Linux/Mac:
+```bash
+chmod +x benchmark_image.sh
+./benchmark_image.sh path/to/image.png
+```
+
+This will:
+1. Run inference on the image with BLIP-2
+2. Run inference on the image with LLaVA
+3. Save detailed timing information and results for each model
+
+#### Running the Pipeline for a Single Image
+
+To run the pipeline for a single image with a specific model:
+
+```bash
+python run_vlm_test.py --model blip2 --image path/to/image.png
+```
+
+Options:
+- `--model`: VLM model to use (`blip2` or `llava`, default: `blip2`)
+- `--image`: Path to the image file to process
+- `--skip_evaluation`: Skip evaluation step
+
+#### Running the Pipeline for All Images
+
+To run the pipeline for all images in the data/images directory:
 
 ```bash
 python run_vlm_test.py --model blip2
@@ -128,7 +163,6 @@ python run_vlm_test.py --model blip2
 Options:
 - `--model`: VLM model to use (`blip2` or `llava`, default: `blip2`)
 - `--skip_data_prep`: Skip data preparation step
-- `--skip_inference`: Skip inference step
 - `--skip_evaluation`: Skip evaluation step
 
 #### Running the Entire Pipeline and Comparing with OCR
@@ -140,39 +174,55 @@ run_comparison.bat
 
 On Linux/Mac:
 ```bash
+chmod +x run_comparison.sh
 ./run_comparison.sh
 ```
 
-#### Running Individual Steps
+### Results and Benchmarking
 
-1. Data Preparation:
-   ```bash
-   python scripts/prepare_data.py
-   ```
+The framework provides detailed benchmarking information for each image:
 
-2. Model Setup and Inference:
-   ```bash
-   python scripts/run_inference.py --model blip2
-   ```
+1. **Model Loading Time**: Time taken to load the model
+2. **Inference Time**: Time taken for actual inference
+3. **Total Processing Time**: Total time including model loading and inference
+4. **Prompt-Specific Timing**: Time taken for each specific prompt
 
-3. Evaluation:
-   ```bash
-   python scripts/evaluate_results.py --results_file results/json/blip2_all_results.json
-   ```
+Results are saved in JSON format with the following structure:
 
-4. Comparison with OCR:
-   ```bash
-   python scripts/compare_with_ocr.py --vlm_results results/json/blip2_all_results.json
-   ```
-
-### Results
-
-After running the pipeline, you'll find the following results:
-
-- Individual VLM results in `results/json/`
-- Evaluation report in `results/blip2_evaluation_report.md`
-- VLM vs. OCR comparison report in `results/vlm_vs_ocr_report.md`
-- Comparison chart in `results/images/vlm_vs_ocr_chart.png`
+```json
+{
+  "image_path": "path/to/image.png",
+  "model_type": "blip2",
+  "timing": {
+    "model_load_time": 5.67,
+    "inference_time": 2.34,
+    "total_time": 8.01,
+    "prompt_times": {
+      "what_is_the_title_of_this_book": 0.78,
+      "who_is_the_author_of_this_book": 0.75,
+      "who_is_the_publisher": 0.81
+    }
+  },
+  "results": {
+    "what_is_the_title_of_this_book": {
+      "prompt": "What is the title of this book?",
+      "response": "The Great Gatsby",
+      "inference_time": 0.78
+    },
+    "who_is_the_author_of_this_book": {
+      "prompt": "Who is the author of this book?",
+      "response": "F. Scott Fitzgerald",
+      "inference_time": 0.75
+    },
+    "who_is_the_publisher": {
+      "prompt": "Who is the publisher of this book?",
+      "response": "Scribner",
+      "inference_time": 0.81
+    },
+    "total_inference_time": 2.34
+  }
+}
+```
 
 ### Hardware Requirements
 

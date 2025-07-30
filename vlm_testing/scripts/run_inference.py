@@ -14,7 +14,6 @@ from pathlib import Path
 import torch
 from PIL import Image
 import matplotlib.pyplot as plt
-from tqdm import tqdm
 
 # Import model setup functions
 from model_setup import setup_blip2, setup_llava
@@ -149,16 +148,26 @@ def run_llava_inference(processor, model, image_path, prompts):
     
     return results
 
-def process_images(model_type, image_dir, output_dir, prompts=None):
+def process_single_image(model_type, image_path, output_dir, prompts=None):
     """
-    Process all images in the directory using the specified model.
+    Process a single image using the specified model and save detailed timing information.
     
     Args:
         model_type (str): Type of model to use ("blip2" or "llava")
-        image_dir (str): Directory containing images to process
+        image_path (str): Path to the image file
         output_dir (str): Directory to save results
         prompts (list, optional): List of prompts to use for inference
+    
+    Returns:
+        dict: Dictionary containing inference results
     """
+    if not os.path.exists(image_path):
+        print(f"Error: Image file not found: {image_path}")
+        return None
+    
+    print(f"Processing image with {model_type}: {image_path}")
+    print("=" * 80)
+    
     # Default prompts if not provided
     if prompts is None:
         prompts = [
@@ -166,6 +175,9 @@ def process_images(model_type, image_dir, output_dir, prompts=None):
             "Who is the author of this book?",
             "Who is the publisher of this book?"
         ]
+    
+    # Start timing for model loading
+    model_load_start = time.time()
     
     # Set up the model
     if model_type == "blip2":
@@ -175,51 +187,136 @@ def process_images(model_type, image_dir, output_dir, prompts=None):
         processor, model = setup_llava()
         inference_func = run_llava_inference
     
+    # End timing for model loading
+    model_load_end = time.time()
+    model_load_time = model_load_end - model_load_start
+    print(f"Model loading time: {model_load_time:.2f} seconds")
+    
     # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
+    # Run inference
+    try:
+        # Start timing for inference
+        inference_start = time.time()
+        
+        # Run inference
+        image_results = inference_func(processor, model, image_path, prompts)
+        
+        # End timing for inference
+        inference_end = time.time()
+        total_inference_time = inference_end - inference_start
+        
+        # Add detailed timing information
+        timing_info = {
+            "model_load_time": model_load_time,
+            "inference_time": total_inference_time,
+            "total_time": model_load_time + total_inference_time,
+            "prompt_times": {}
+        }
+        
+        # Extract prompt-specific timing
+        for prompt_key, prompt_data in image_results.items():
+            if prompt_key != "total_inference_time" and "inference_time" in prompt_data:
+                timing_info["prompt_times"][prompt_key] = prompt_data["inference_time"]
+        
+        # Store the results
+        results = {
+            "image_path": image_path,
+            "model_type": model_type,
+            "timing": timing_info,
+            "results": image_results
+        }
+        
+        # Print timing information
+        print("\nTiming Information:")
+        print(f"Model loading time: {model_load_time:.2f} seconds")
+        print(f"Total inference time: {total_inference_time:.2f} seconds")
+        print(f"Total processing time: {model_load_time + total_inference_time:.2f} seconds")
+        
+        print("\nPrompt-specific timing:")
+        for prompt_key, prompt_time in timing_info["prompt_times"].items():
+            print(f"  {prompt_key}: {prompt_time:.2f} seconds")
+        
+        # Print results
+        print("\nResults:")
+        for prompt_key, prompt_data in image_results.items():
+            if prompt_key != "total_inference_time":
+                print(f"\nPrompt: {prompt_data['prompt']}")
+                print(f"Response: {prompt_data['response']}")
+        
+        # Save the results for this image
+        base_name = os.path.basename(image_path).split('.')[0]
+        output_file = os.path.join(output_dir, f"{base_name}_{model_type}_results.json")
+        with open(output_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        
+        print(f"\nDetailed results saved to {output_file}")
+        return results
+        
+    except Exception as e:
+        print(f"Error processing {image_path}: {str(e)}")
+        return None
+
+def process_all_images(model_type, image_dir, output_dir, prompts=None):
+    """
+    Process all images in the directory using the specified model.
+    
+    Args:
+        model_type (str): Type of model to use ("blip2" or "llava")
+        image_dir (str): Directory containing images to process
+        output_dir (str): Directory to save results
+        prompts (list, optional): List of prompts to use for inference
+    
+    Returns:
+        dict: Dictionary containing all results
+    """
     # Get all image files in the directory
     image_files = [f for f in os.listdir(image_dir) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
     
+    if not image_files:
+        print(f"No image files found in {image_dir}")
+        return {}
+    
+    print(f"Found {len(image_files)} images to process")
+    
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
     # Process each image
-    results = {}
-    for image_file in tqdm(image_files, desc=f"Processing images with {model_type}"):
+    all_results = {}
+    for image_file in image_files:
         image_path = os.path.join(image_dir, image_file)
         
-        # Run inference
-        try:
-            image_results = inference_func(processor, model, image_path, prompts)
-            
-            # Store the results
-            results[image_file] = {
-                "image_path": image_path,
-                "results": image_results
-            }
-            
-            # Save the results for this image
-            image_output_file = os.path.join(output_dir, f"{os.path.splitext(image_file)[0]}_{model_type}_results.json")
-            with open(image_output_file, 'w') as f:
-                json.dump(results[image_file], f, indent=2)
-            
-        except Exception as e:
-            print(f"Error processing {image_file}: {str(e)}")
-            results[image_file] = {
-                "image_path": image_path,
-                "error": str(e)
-            }
+        print(f"\n\n{'='*80}")
+        print(f"Processing {image_file}")
+        print(f"{'='*80}\n")
+        
+        # Process the image
+        results = process_single_image(model_type, image_path, output_dir, prompts)
+        
+        if results:
+            all_results[image_file] = results
+        
+        print(f"\nCompleted processing {image_file}")
+        print(f"{'='*80}\n")
     
     # Save all results to a single file
-    output_file = os.path.join(output_dir, f"{model_type}_all_results.json")
-    with open(output_file, 'w') as f:
-        json.dump(results, f, indent=2)
+    if all_results:
+        output_file = os.path.join(output_dir, f"{model_type}_all_results.json")
+        with open(output_file, 'w') as f:
+            json.dump(all_results, f, indent=2)
+        
+        print(f"All results saved to {output_file}")
     
-    print(f"Results saved to {output_file}")
-    return results
+    return all_results
 
 def main():
     parser = argparse.ArgumentParser(description="Run inference on book cover images using VLM models")
     parser.add_argument("--model", type=str, choices=["blip2", "llava"], default="blip2",
                         help="VLM model to use (default: blip2)")
+    parser.add_argument("--image", type=str, default=None,
+                        help="Path to a single image file to process (if not specified, process all images in image_dir)")
     parser.add_argument("--image_dir", type=str, default="../data/images",
                         help="Directory containing images to process (default: ../data/images)")
     parser.add_argument("--output_dir", type=str, default="../results/json",
@@ -230,11 +327,16 @@ def main():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     project_dir = os.path.dirname(script_dir)
     
-    image_dir = os.path.join(project_dir, args.image_dir.lstrip("../"))
     output_dir = os.path.join(project_dir, args.output_dir.lstrip("../"))
     
-    # Process the images
-    process_images(args.model, image_dir, output_dir)
+    # Process a single image or all images
+    if args.image:
+        # Process a single image
+        process_single_image(args.model, args.image, output_dir)
+    else:
+        # Process all images in the directory
+        image_dir = os.path.join(project_dir, args.image_dir.lstrip("../"))
+        process_all_images(args.model, image_dir, output_dir)
 
 if __name__ == "__main__":
     main() 
