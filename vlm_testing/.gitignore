@@ -41,11 +41,6 @@ env/
 models/*
 !models/.gitkeep
 
-# Data files
-data/images/*
-!data/images/.gitkeep
-data/ground_truth.json
-
 # Results
 results/json/*
 !results/json/.gitkeep
