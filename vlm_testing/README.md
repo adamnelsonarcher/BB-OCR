@@ -70,7 +70,10 @@ vlm_testing/
 │   └── compare_with_ocr.py # OCR comparison script
 ├── requirements.txt       # Python dependencies
 ├── environment.yml        # Conda environment file
-└── run_vlm_test.py        # Main script to run the pipeline
+├── run_vlm_test.py        # Main script to run the pipeline
+├── run_comparison.bat     # Windows batch script to run the pipeline
+├── run_comparison.sh      # Linux/Mac shell script to run the pipeline
+└── test_setup.py          # Script to verify the installation
 ```
 
 ### Installation
@@ -99,6 +102,19 @@ vlm_testing/
    conda activate vlm-testing
    ```
 
+#### Verify Installation
+
+Run the test script to verify that all required packages are installed:
+
+```bash
+python test_setup.py
+```
+
+This script checks:
+- Python version
+- Required packages and their versions
+- CUDA-compatible GPU availability
+
 ### Usage
 
 #### Running the Entire Pipeline
@@ -114,6 +130,18 @@ Options:
 - `--skip_data_prep`: Skip data preparation step
 - `--skip_inference`: Skip inference step
 - `--skip_evaluation`: Skip evaluation step
+
+#### Running the Entire Pipeline and Comparing with OCR
+
+On Windows:
+```bash
+run_comparison.bat
+```
+
+On Linux/Mac:
+```bash
+./run_comparison.sh
+```
 
 #### Running Individual Steps
 
