@@ -28,8 +28,8 @@ def setup_blip2(model_path=None):
     """
     print("Setting up BLIP-2 model...")
     
-    # Use a smaller BLIP-2 model to reduce memory requirements
-    model_name = "Salesforce/blip2-opt-2.7b"
+    # Use a smaller BLIP-2 model to reduce memory requirements and avoid compatibility issues
+    model_name = "Salesforce/blip2-flan-t5-xl"
     
     # Download and set up the model
     processor = Blip2Processor.from_pretrained(model_name)

@@ -80,29 +80,21 @@ vlm_testing/
 
 ### Installation
 
-#### Option 1: Using pip with a virtual environment
+#### Option 1: Direct Installation
 
-1. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   # On Windows
-   venv\Scripts\activate
-   # On Linux/Mac
-   source venv/bin/activate
-   ```
+Install dependencies directly:
 
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+```bash
+pip install -r requirements.txt
+```
 
 #### Option 2: Using conda environment
 
-1. Create and activate the conda environment:
-   ```bash
-   conda env create -f environment.yml
-   conda activate vlm-testing
-   ```
+Create and activate the conda environment:
+```bash
+conda env create -f environment.yml
+conda activate vlm-testing
+```
 
 #### Verify Installation
 
