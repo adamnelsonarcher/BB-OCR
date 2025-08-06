@@ -14,7 +14,7 @@ import pkg_resources
 
 def check_and_install_dependencies():
     """Check if required packages are installed and install them if not."""
-    required_packages = ['transformers', 'sentencepiece', 'torch', 'pillow']
+    required_packages = ['transformers', 'sentencepiece', 'torch', 'pillow', 'protobuf']
     
     for package in required_packages:
         try:
@@ -50,7 +50,11 @@ def fix_tokenizer(local_model_path="./models/llava-7b", source_model_id="llava-h
     try:
         # Download the tokenizer and image processor
         print("Downloading tokenizer...")
-        tokenizer = LlamaTokenizer.from_pretrained(source_model_id, trust_remote_code=True)
+        tokenizer = LlamaTokenizer.from_pretrained(
+            source_model_id, 
+            trust_remote_code=True,
+            legacy=False  # Use the new non-legacy mode that requires protobuf
+        )
         tokenizer.save_pretrained(temp_dir)
         
         print("Downloading image processor...")
@@ -98,7 +102,7 @@ def fix_tokenizer(local_model_path="./models/llava-7b", source_model_id="llava-h
         print(f"Error: {str(e)}")
         print("\nTroubleshooting:")
         print("1. Make sure you have the required dependencies installed:")
-        print("   pip install transformers sentencepiece torch pillow")
+        print("   pip install transformers sentencepiece torch pillow protobuf")
         print("2. Check if you have write permissions to the model directory")
         print("3. If the error persists, try running with administrator privileges")
         print("4. Alternatively, use the Hugging Face Hub directly in your code:")

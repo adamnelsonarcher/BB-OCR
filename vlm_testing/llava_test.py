@@ -12,8 +12,7 @@ import json
 import argparse
 import torch
 from PIL import Image
-from transformers import AutoModelForCausalLM, CLIPImageProcessor, LlamaTokenizer
-from transformers import LlavaProcessor
+from transformers import AutoProcessor, AutoModelForCausalLM, CLIPImageProcessor, LlamaTokenizer
 
 def run_inference(image_path, prompts):
     """
@@ -55,9 +54,9 @@ def run_inference(image_path, prompts):
             )
             
             # Create the processor from the components
-            processor = LlavaProcessor(
-                image_processor=image_processor,
-                tokenizer=tokenizer
+            processor = AutoProcessor.from_pretrained(
+                local_model_path,
+                trust_remote_code=True
             )
             
             # Load the model from local path
@@ -65,8 +64,8 @@ def run_inference(image_path, prompts):
                 local_model_path,
                 torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
                 device_map="auto",
-                trust_remote_code=True,
-                use_safetensors=True
+                use_safetensors=True,
+                trust_remote_code=True
             )
             print("Successfully loaded model from local path!")
             
@@ -97,10 +96,10 @@ def run_inference(image_path, prompts):
             if "<image>" not in tokenizer.get_vocab():
                 tokenizer.add_special_tokens({"additional_special_tokens": ["<image>"]})
             
-            # Create the processor from the components
-            processor = LlavaProcessor(
-                image_processor=image_processor,
-                tokenizer=tokenizer
+            # Create the processor
+            processor = AutoProcessor.from_pretrained(
+                model_id,
+                trust_remote_code=True
             )
             
             # Load the model
@@ -158,8 +157,8 @@ def run_inference(image_path, prompts):
                     repetition_penalty=1.2,
                 )
             
-            # Decode the generated text using tokenizer directly
-            generated_text = processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Decode the generated text
+            generated_text = processor.decode(outputs[0], skip_special_tokens=True)
             
             # Clean up the response - extract the answer part
             if formatted_prompt in generated_text:
