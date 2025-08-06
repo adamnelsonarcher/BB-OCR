@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-GIT (Generative Image-to-text Transformer) test script for VLM testing.
-This script tests Microsoft's GIT model on book cover images.
+BLIP-2 OPT-2.7B test script for VLM testing.
+This script tests BLIP-2 with OPT-2.7B backbone on book cover images.
 """
 
 import os
@@ -12,11 +12,11 @@ import json
 import argparse
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForCausalLM
+from transformers import Blip2Processor, Blip2ForConditionalGeneration
 
 def run_inference(image_path, prompts):
     """
-    Run inference on an image using Microsoft's GIT model.
+    Run inference on an image using BLIP-2 with OPT-2.7B backbone.
     
     Args:
         image_path (str): Path to the image file
@@ -30,9 +30,9 @@ def run_inference(image_path, prompts):
     # Start timing for model loading
     model_load_start = time.time()
     
-    # Initialize the model - using Microsoft's GIT model
-    print("Loading GIT model...")
-    model_name = "microsoft/git-base-textcaps"  # Using the base model trained on TextCaps
+    # Initialize the model - using BLIP-2 with OPT-2.7B backbone
+    print("Loading BLIP-2 OPT-2.7B model...")
+    model_name = "Salesforce/blip2-opt-2.7b"
     
     # Download and set up the model
     try:
@@ -40,17 +40,17 @@ def run_inference(image_path, prompts):
         # cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
         # os.makedirs(cache_dir, exist_ok=True)
         
-        processor = AutoProcessor.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(
+        processor = Blip2Processor.from_pretrained(model_name)
+        model = Blip2ForConditionalGeneration.from_pretrained(
             model_name,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto"  # Automatically determine device mapping
         )
         
-        # Move model to GPU if available
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = model.to(device)
-        
+        # Device is automatically determined by device_map="auto"
+        device = next(model.parameters()).device
         print(f"Model loaded on {device}")
+        
     except Exception as e:
         print(f"Error loading model: {str(e)}")
         return None
@@ -78,21 +78,28 @@ def run_inference(image_path, prompts):
         start_time = time.time()
         
         try:
+            # For BLIP-2, use specific prompt format
+            formatted_prompt = f"Question: {prompt} Answer:"
+            
             # Process the image and prompt
-            inputs = processor(images=image, text=prompt, return_tensors="pt").to(device)
+            inputs = processor(image, formatted_prompt, return_tensors="pt").to(device)
             
             # Generate text
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_length=50,
+                    max_new_tokens=50,
                     num_beams=5,
                     min_length=1,
                     repetition_penalty=1.5,
                 )
             
             # Decode the generated text
-            generated_text = processor.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+            generated_text = processor.decode(outputs[0], skip_special_tokens=True)
+            
+            # Clean up the response - extract the answer part
+            if "Answer:" in generated_text:
+                generated_text = generated_text.split("Answer:")[1].strip()
             
         except Exception as e:
             print(f"Error during inference: {str(e)}")
@@ -127,7 +134,7 @@ def run_inference(image_path, prompts):
     # Create the final results dictionary
     final_results = {
         "image_path": image_path,
-        "model_type": "git-base-textcaps",
+        "model_type": "blip2-opt-2.7b",
         "timing": timing_info,
         "results": results
     }
@@ -135,7 +142,7 @@ def run_inference(image_path, prompts):
     # Save the results
     os.makedirs("results/json", exist_ok=True)
     base_name = os.path.basename(image_path).split('.')[0]
-    output_file = os.path.join("results/json", f"{base_name}_git_results.json")
+    output_file = os.path.join("results/json", f"{base_name}_blip2_opt_results.json")
     
     with open(output_file, 'w') as f:
         json.dump(final_results, f, indent=2)
@@ -146,7 +153,7 @@ def run_inference(image_path, prompts):
     return final_results
 
 def main():
-    parser = argparse.ArgumentParser(description="GIT test for VLM on book cover images")
+    parser = argparse.ArgumentParser(description="BLIP-2 OPT-2.7B test for VLM on book cover images")
     parser.add_argument("--image", type=str, required=True,
                         help="Path to the image file to process")
     parser.add_argument("--cache_dir", type=str, default=None,

@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-GIT (Generative Image-to-text Transformer) test script for VLM testing.
-This script tests Microsoft's GIT model on book cover images.
+LLaVA-7B test script for VLM testing.
+This script tests LLaVA-7B model on book cover images.
 """
 
 import os
@@ -12,11 +12,12 @@ import json
 import argparse
 import torch
 from PIL import Image
-from transformers import AutoProcessor, AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, CLIPImageProcessor, LlamaTokenizer
+from transformers import LlavaProcessor
 
 def run_inference(image_path, prompts):
     """
-    Run inference on an image using Microsoft's GIT model.
+    Run inference on an image using LLaVA-7B model.
     
     Args:
         image_path (str): Path to the image file
@@ -28,33 +29,55 @@ def run_inference(image_path, prompts):
     print(f"Processing image: {image_path}")
     
     # Start timing for model loading
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
     model_load_start = time.time()
     
-    # Initialize the model - using Microsoft's GIT model
-    print("Loading GIT model...")
-    model_name = "microsoft/git-base-textcaps"  # Using the base model trained on TextCaps
     
-    # Download and set up the model
+    # Initialize the model - using LLaVA-7B
+    print("Loading LLaVA-7B model...")
+    
     try:
-        # Set cache directory explicitly if needed
-        # cache_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
-        # os.makedirs(cache_dir, exist_ok=True)
+        # Use a known working model from Hugging Face Hub
+        model_id = "llava-hf/llava-1.5-7b-hf"
+        print(f"Loading model from {model_id}...")
         
-        processor = AutoProcessor.from_pretrained(model_name)
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32
+        # Load the image processor, tokenizer, and model separately
+        image_processor = CLIPImageProcessor.from_pretrained(
+            model_id,
+            trust_remote_code=True
         )
         
-        # Move model to GPU if available
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        model = model.to(device)
+        tokenizer = LlamaTokenizer.from_pretrained(
+            model_id, 
+            trust_remote_code=True
+        )
         
-        print(f"Model loaded on {device}")
+        # Add the image token if it doesn't exist
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+        
+        if "<image>" not in tokenizer.get_vocab():
+            tokenizer.add_special_tokens({"additional_special_tokens": ["<image>"]})
+        
+        # Create the processor from the components
+        processor = LlavaProcessor(
+            image_processor=image_processor,
+            tokenizer=tokenizer
+        )
+        
+        # Load the model
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+            device_map="auto",
+            trust_remote_code=True
+        )
+        
     except Exception as e:
         print(f"Error loading model: {str(e)}")
-        return None
-    
+        raise
+
     # End timing for model loading
     model_load_end = time.time()
     model_load_time = model_load_end - model_load_start
@@ -78,21 +101,33 @@ def run_inference(image_path, prompts):
         start_time = time.time()
         
         try:
+            # For LLaVA, use specific prompt format
+            formatted_prompt = f"<image>\nLook at this book cover and answer: {prompt}"
+            
             # Process the image and prompt
-            inputs = processor(images=image, text=prompt, return_tensors="pt").to(device)
+            inputs = processor(images=image, text=formatted_prompt, return_tensors="pt").to(device)
             
             # Generate text
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_length=50,
-                    num_beams=5,
-                    min_length=1,
-                    repetition_penalty=1.5,
+                    max_new_tokens=100,
+                    do_sample=True,
+                    temperature=0.2,
+                    top_p=0.9,
+                    repetition_penalty=1.2,
                 )
             
-            # Decode the generated text
-            generated_text = processor.batch_decode(outputs, skip_special_tokens=True)[0].strip()
+            # Decode the generated text using tokenizer directly
+            generated_text = processor.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+            # Clean up the response - extract the answer part
+            if formatted_prompt in generated_text:
+                generated_text = generated_text.replace(formatted_prompt, "").strip()
+            elif prompt in generated_text:
+                # Try to extract the response after the prompt
+                start_idx = generated_text.find(prompt) + len(prompt)
+                generated_text = generated_text[start_idx:].strip()
             
         except Exception as e:
             print(f"Error during inference: {str(e)}")
@@ -127,7 +162,7 @@ def run_inference(image_path, prompts):
     # Create the final results dictionary
     final_results = {
         "image_path": image_path,
-        "model_type": "git-base-textcaps",
+        "model_type": "llava-1.5-7b",
         "timing": timing_info,
         "results": results
     }
@@ -135,7 +170,7 @@ def run_inference(image_path, prompts):
     # Save the results
     os.makedirs("results/json", exist_ok=True)
     base_name = os.path.basename(image_path).split('.')[0]
-    output_file = os.path.join("results/json", f"{base_name}_git_results.json")
+    output_file = os.path.join("results/json", f"{base_name}_llava_results.json")
     
     with open(output_file, 'w') as f:
         json.dump(final_results, f, indent=2)
@@ -146,7 +181,7 @@ def run_inference(image_path, prompts):
     return final_results
 
 def main():
-    parser = argparse.ArgumentParser(description="GIT test for VLM on book cover images")
+    parser = argparse.ArgumentParser(description="LLaVA-7B test for VLM on book cover images")
     parser.add_argument("--image", type=str, required=True,
                         help="Path to the image file to process")
     parser.add_argument("--cache_dir", type=str, default=None,
