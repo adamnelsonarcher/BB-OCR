@@ -36,43 +36,83 @@ def run_inference(image_path, prompts):
     
     # Initialize the model - using LLaVA-7B
     print("Loading LLaVA-7B model...")
+    local_model_path = "./models/llava-7b"
     
     try:
-        # Use a known working model from Hugging Face Hub
-        model_id = "llava-hf/llava-1.5-7b-hf"
-        print(f"Loading model from {model_id}...")
+        # First try to load from local path with fixed tokenizer
+        print(f"Trying to load from local path: {local_model_path}")
         
-        # Load the image processor, tokenizer, and model separately
-        image_processor = CLIPImageProcessor.from_pretrained(
-            model_id,
-            trust_remote_code=True
-        )
-        
-        tokenizer = LlamaTokenizer.from_pretrained(
-            model_id, 
-            trust_remote_code=True
-        )
-        
-        # Add the image token if it doesn't exist
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
-        
-        if "<image>" not in tokenizer.get_vocab():
-            tokenizer.add_special_tokens({"additional_special_tokens": ["<image>"]})
-        
-        # Create the processor from the components
-        processor = LlavaProcessor(
-            image_processor=image_processor,
-            tokenizer=tokenizer
-        )
-        
-        # Load the model
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto",
-            trust_remote_code=True
-        )
+        try:
+            # Load the image processor, tokenizer, and model separately
+            image_processor = CLIPImageProcessor.from_pretrained(
+                local_model_path,
+                trust_remote_code=True
+            )
+            
+            tokenizer = LlamaTokenizer.from_pretrained(
+                local_model_path, 
+                trust_remote_code=True
+            )
+            
+            # Create the processor from the components
+            processor = LlavaProcessor(
+                image_processor=image_processor,
+                tokenizer=tokenizer
+            )
+            
+            # Load the model from local path
+            model = AutoModelForCausalLM.from_pretrained(
+                local_model_path,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto",
+                trust_remote_code=True,
+                use_safetensors=True
+            )
+            print("Successfully loaded model from local path!")
+            
+        except Exception as local_error:
+            # If local loading fails, fall back to Hugging Face Hub
+            print(f"Local loading failed: {str(local_error)}")
+            print("Falling back to Hugging Face Hub...")
+            
+            # Use a known working model from Hugging Face Hub
+            model_id = "llava-hf/llava-1.5-7b-hf"
+            print(f"Loading model from {model_id}...")
+            
+            # Load from Hugging Face Hub
+            image_processor = CLIPImageProcessor.from_pretrained(
+                model_id,
+                trust_remote_code=True
+            )
+            
+            tokenizer = LlamaTokenizer.from_pretrained(
+                model_id, 
+                trust_remote_code=True
+            )
+            
+            # Add the image token if it doesn't exist
+            if tokenizer.pad_token is None:
+                tokenizer.pad_token = tokenizer.eos_token
+            
+            if "<image>" not in tokenizer.get_vocab():
+                tokenizer.add_special_tokens({"additional_special_tokens": ["<image>"]})
+            
+            # Create the processor from the components
+            processor = LlavaProcessor(
+                image_processor=image_processor,
+                tokenizer=tokenizer
+            )
+            
+            # Load the model
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto",
+                trust_remote_code=True
+            )
+            
+            print("Successfully loaded model from Hugging Face Hub!")
+            print("To fix your local model files, run: python fix_tokenizer.py")
         
     except Exception as e:
         print(f"Error loading model: {str(e)}")
