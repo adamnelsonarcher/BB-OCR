@@ -155,18 +155,53 @@ def process_book(book_id, output_dir="output", model="gemma3:4b", show_raw=True)
         
         # Parse the JSON from the response
         try:
+            # Remove any markdown formatting (```json and ```)
+            response_text = response_text.replace("```json", "").replace("```", "")
+            
             # Try to find JSON in the response
             json_start = response_text.find("{")
             json_end = response_text.rfind("}")
             
             if json_start >= 0 and json_end >= 0:
                 json_str = response_text[json_start:json_end+1]
+                # Replace template placeholders with null values
+                json_str = json_str.replace('"string | null"', 'null')
+                json_str = json_str.replace('"integer | null"', 'null')
+                json_str = json_str.replace('"float | null"', 'null')
+                json_str = json_str.replace('"YYYY | null"', 'null')
+                json_str = json_str.replace('"YYYY-MM-DD | YYYY | null"', 'null')
+                json_str = json_str.replace('["string", "..."] | []', '[]')
+                
+                # Try to parse the JSON
                 metadata = json.loads(json_str)
             else:
                 metadata = json.loads(response_text)
         except json.JSONDecodeError as e:
             print(f"Failed to parse JSON from response: {e}")
-            return False
+            print("Returning empty metadata structure")
+            # Create a default empty metadata structure
+            metadata = {
+                "title": None,
+                "subtitle": None,
+                "authors": [],
+                "publisher": None,
+                "publication_date": None,
+                "isbn_10": None,
+                "isbn_13": None,
+                "asin": None,
+                "edition": None,
+                "binding_type": None,
+                "language": None,
+                "page_count": None,
+                "categories": [],
+                "description": None,
+                "condition_keywords": [],
+                "price": {
+                    "currency": None,
+                    "amount": None
+                },
+                "_error": str(e)
+            }
         
         # Validate the metadata
         is_valid, validation_msg = validate_metadata(metadata)

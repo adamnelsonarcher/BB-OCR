@@ -5,26 +5,26 @@
     "Edward Eggleston"
   ],
   "publisher": "Orange Judd Company",
-  "publication_date": "1876-01-01",
+  "publication_date": "1878",
   "isbn_10": null,
   "isbn_13": null,
   "asin": null,
   "edition": null,
-  "binding_type": "Hardcover",
+  "binding_type": null,
   "language": null,
   "page_count": null,
-  "categories": [
-    "Fiction",
-    "American Literature"
-  ],
+  "categories": [],
   "description": null,
-  "condition_keywords": [
-    "dust jacket",
-    "worn",
-    "aged"
-  ],
+  "condition_keywords": [],
   "price": {
     "currency": null,
     "amount": null
+  },
+  "evidence": {
+    "title_snippet": "The Hoosier School-Master",
+    "publisher_snippet": "Orange Judd Company",
+    "publication_year_snippet": "1878",
+    "isbn_snippet": null,
+    "notes": null
   }
 }
