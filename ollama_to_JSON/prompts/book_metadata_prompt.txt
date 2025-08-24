@@ -10,7 +10,7 @@ Examine the provided book image(s) and extract the following metadata:
   "subtitle": "string | null",
   "authors": ["string", "..."] | [],
   "publisher": "string | null",
-  "publication_date": "YYYY-MM-DD | YYYY | null",
+  "publication_date": "YYYY| null",
   "isbn_10": "string | null",
   "isbn_13": "string | null",
   "asin": "string | null",

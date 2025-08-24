@@ -8,7 +8,9 @@ A straightforward script to process a book and validate the extracted metadata.
 import os
 import sys
 import json
+import time
 import argparse
+import requests
 from pathlib import Path
 import jsonschema
 from tqdm import tqdm
@@ -82,7 +84,7 @@ def validate_metadata(metadata):
     
     return True, "Validation successful"
 
-def process_book(book_id, output_dir="output", model="gemma3:4b"):
+def process_book(book_id, output_dir="output", model="gemma3:4b", show_raw=True):
     """Process a single book by ID."""
     # Determine the book directory path
     books_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "books")
@@ -100,12 +102,71 @@ def process_book(book_id, output_dir="output", model="gemma3:4b"):
     print(f"Book directory: {book_dir}")
     print(f"Using model: {model}")
     
+    # Track processing time
+    start_time = time.time()
+    
     try:
         # Initialize the extractor
         extractor = BookMetadataExtractor(model=model)
         
-        # Process the book
-        metadata = extractor.process_book_directory(book_dir)
+        # Get all image files in the directory
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.JPG', '.JPEG', '.PNG']
+        image_paths = []
+        
+        for file in os.listdir(book_dir):
+            if any(file.lower().endswith(ext.lower()) for ext in image_extensions):
+                image_paths.append(os.path.join(book_dir, file))
+        
+        if not image_paths:
+            print(f"Error: No image files found in {book_dir}")
+            return False
+        
+        print(f"Found {len(image_paths)} images to process")
+        
+        # Encode all images
+        images = [extractor.encode_image(img_path) for img_path in image_paths]
+        
+        # Create the request payload
+        payload = {
+            "model": model,
+            "prompt": extractor.prompt,
+            "stream": False,
+            "images": images
+        }
+        
+        print("\nSending request to Ollama...")
+        
+        # Send request to Ollama
+        response = requests.post(extractor.ollama_url, json=payload)
+        
+        if response.status_code != 200:
+            print(f"Error from Ollama API: {response.text}")
+            return False
+        
+        # Extract the response
+        result = response.json()
+        response_text = result.get("response", "")
+        
+        # Display raw model output if requested
+        if show_raw:
+            print("\n--- Raw Model Output ---")
+            print(response_text)
+            print("------------------------\n")
+        
+        # Parse the JSON from the response
+        try:
+            # Try to find JSON in the response
+            json_start = response_text.find("{")
+            json_end = response_text.rfind("}")
+            
+            if json_start >= 0 and json_end >= 0:
+                json_str = response_text[json_start:json_end+1]
+                metadata = json.loads(json_str)
+            else:
+                metadata = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            print(f"Failed to parse JSON from response: {e}")
+            return False
         
         # Validate the metadata
         is_valid, validation_msg = validate_metadata(metadata)
@@ -133,10 +194,21 @@ def process_book(book_id, output_dir="output", model="gemma3:4b"):
         print(f"Publication Date: {metadata.get('publication_date')}")
         print(f"Binding: {metadata.get('binding_type')}")
         
+        # Calculate and display processing time
+        end_time = time.time()
+        processing_time = end_time - start_time
+        print(f"\nTotal processing time: {processing_time:.2f} seconds")
+        
         return is_valid
         
     except Exception as e:
         print(f"Error processing book {book_id}: {e}")
+        
+        # Calculate and display processing time even if there was an error
+        end_time = time.time()
+        processing_time = end_time - start_time
+        print(f"\nTotal processing time: {processing_time:.2f} seconds")
+        
         return False
 
 def main():
@@ -147,10 +219,30 @@ def main():
                         help="Directory to save output JSON (default: output)")
     parser.add_argument("--model", "-m", type=str, default="gemma3:4b", 
                         help="Ollama model to use (default: gemma3:4b)")
+    parser.add_argument("--no-raw", action="store_true", 
+                        help="Don't show raw model output")
     
     args = parser.parse_args()
     
-    success = process_book(args.book_id, args.output_dir, args.model)
+    # List available models if requested
+    if args.model == "list":
+        try:
+            response = requests.get("http://localhost:11434/api/tags")
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                print("\nAvailable Ollama models:")
+                for model in models:
+                    print(f"- {model.get('name')}")
+                print("\nUse one of these model names with the --model option")
+                sys.exit(0)
+            else:
+                print("Could not connect to Ollama server")
+                sys.exit(1)
+        except Exception as e:
+            print(f"Error connecting to Ollama: {e}")
+            sys.exit(1)
+    
+    success = process_book(args.book_id, args.output_dir, args.model, not args.no_raw)
     sys.exit(0 if success else 1)
 
 if __name__ == "__main__":

@@ -1,30 +1,32 @@
 @echo off
 REM Simple batch file to process a book by ID
 
-echo Book Metadata Extractor
-echo ======================
+IF "%1"=="list" (
+    echo Listing available Ollama models...
+    python process_book.py 1 --model list
+    exit /b
+)
 
 IF "%1"=="" (
-    echo Usage: process_book.bat [BOOK_ID]
-    echo Example: process_book.bat 1
+    echo Usage: process_book.bat [BOOK_ID] [MODEL]
+    echo.
+    echo Examples:
+    echo   process_book.bat 1            - Process book 1 with default model
+    echo   process_book.bat 2 llava      - Process book 2 with llava model
+    echo   process_book.bat list         - List available models
     echo.
     echo Available books:
     dir /b books
-    exit /b 1
+    exit /b
 )
 
 set BOOK_ID=%1
+set MODEL=%2
 
-echo Processing book %BOOK_ID%...
-echo.
-
-python process_book.py %BOOK_ID%
-
-IF %ERRORLEVEL% NEQ 0 (
-    echo.
-    echo Processing failed!
+IF "%MODEL%"=="" (
+    echo Processing book %BOOK_ID% with default model...
+    python process_book.py %BOOK_ID%
 ) ELSE (
-    echo.
-    echo Processing complete!
-    echo Results saved to output/book_%BOOK_ID%.json
+    echo Processing book %BOOK_ID% with model %MODEL%...
+    python process_book.py %BOOK_ID% --model %MODEL%
 )

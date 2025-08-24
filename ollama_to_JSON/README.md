@@ -27,7 +27,7 @@ A simple tool to extract structured metadata from book images using Ollama.
 The simplest way to process a book is to use the batch file:
 
 ```
-process_book.bat [BOOK_ID]
+process_book.bat [BOOK_ID] [MODEL]
 ```
 
 For example:
@@ -36,25 +36,49 @@ For example:
 process_book.bat 1
 ```
 
+Or specify a different model:
+
+```
+process_book.bat 1 llava
+```
+
+You can list available models:
+
+```
+process_book.bat list-models
+```
+
 This will:
 1. Process all images in the `books/1` directory
-2. Extract metadata using Ollama and Gemma3:4b
-3. Validate the extracted metadata
-4. Save the results to `output/book_1.json`
-5. Display a summary of the extracted information
+2. Extract metadata using Ollama with the specified model (default: gemma3:4b)
+3. Show the raw model output in the console
+4. Validate the extracted metadata
+5. Save the results to `output/book_1.json`
+6. Display a summary of the extracted information
+7. Show the total processing time
 
 ### Advanced Usage
 
 You can also use the Python script directly for more options:
 
 ```
-python process_book.py [BOOK_ID] --output-dir [OUTPUT_DIR] --model [MODEL_NAME]
+python process_book.py [BOOK_ID] --output-dir [OUTPUT_DIR] --model [MODEL_NAME] --no-raw
 ```
 
 For example:
 
 ```
 python process_book.py 1 --output-dir my_results --model llava
+```
+
+Available options:
+- `--model` or `-m`: Specify the Ollama model to use (default: gemma3:4b)
+- `--output-dir` or `-o`: Specify the output directory (default: output)
+- `--no-raw`: Don't show the raw model output in the console
+
+To list available models:
+```
+python process_book.py 1 --model list
 ```
 
 ## Output Format
