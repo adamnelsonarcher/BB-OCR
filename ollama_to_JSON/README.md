@@ -1,163 +1,96 @@
-# 📚 Book Metadata & Pricing Pipeline
+# Book Metadata Extractor
 
-## **Overview**
+A simple tool to extract structured metadata from book images using Ollama.
 
-We're building a **book metadata extraction and pricing pipeline**.
+## Requirements
 
-The goal:
+- Python 3.7+
+- Ollama installed and running locally
+- Gemma3:4b model pulled in Ollama
 
-* Take an **image** of a book (cover, title page, back cover, dust jacket, etc.).
-* Use a **vision-language model** (**Ollama + Gemma3:4b**) to extract **structured JSON metadata** similar to an Amazon listing.
-* Later, integrate **pricing logic** by comparing against Amazon, Biblio, ABE, Alibris, and other sources.
-* Eventually, support **batch ingestion** of hundreds of book images for bulk cataloging and valuation.
+## Setup
 
----
-
-## **Problem Statement**
-
-Our store needs to:
-
-1. **Catalog books automatically**
-
-   * Extract ISBN, title, author, publisher, publication date, binding, edition, and other attributes.
-   * Capture **condition-related keywords** (e.g., "ex-library," "dust jacket clipped," "book club edition").
-   * Structure this into **clean JSON** for downstream systems.
-
-2. **Estimate pricing intelligently** *(future step)*
-
-   * Use ISBNs or title/author searches to find comparable listings.
-   * Exclude "print-on-demand," damaged, or ex-library copies unless relevant.
-   * Match **cover images** and **edition details** for accuracy.
-   * Support uniform pricing logic across **Amazon, Biblio, ABE, and Alibris**.
-
----
-
-## **Phase 1: Metadata Extraction Pipeline**
-
-### **Input**
-
-* A book image (cover, title page, or back cover).
-
-### **Process**
-
-* Send the image to **Gemma3:4b** using Ollama.
-* Use a carefully crafted **system prompt** to force strict JSON output.
-* Parse and validate the JSON locally.
-
-### **Output**
-
-```json
-{
-  "title": "string | null",
-  "subtitle": "string | null",
-  "authors": ["string", "..."] | [],
-  "publisher": "string | null",
-  "publication_date": "YYYY-MM-DD | YYYY | null",
-  "isbn_10": "string | null",
-  "isbn_13": "string | null",
-  "asin": "string | null",
-  "edition": "string | null",
-  "binding_type": "string | null",
-  "language": "string | null",
-  "page_count": "integer | null",
-  "categories": ["string", "..."] | [],
-  "description": "string | null",
-  "condition_keywords": ["string", "..."] | [],
-  "price": {
-    "currency": "string | null",
-    "amount": "float | null"
-  }
-}
-```
-
----
-
-## **Installation**
-
-### Prerequisites
-
-1. **Python 3.7+**
-2. **Ollama** installed and running locally
-3. **Gemma3:4b** model pulled in Ollama
-
-### Setup
-
-1. Clone this repository
-2. Install dependencies:
+1. Install dependencies:
    ```
-   pip install -r requirements.txt
+   pip install -r ollama_to_JSON/requirements.txt
    ```
-3. Make sure Ollama is running with the Gemma3:4b model:
+
+2. Make sure Ollama is running with the Gemma3:4b model:
    ```
    ollama pull gemma3:4b
    ```
 
----
+## Usage
 
-## **Usage**
+### Process a single book
 
-### Single Image Processing
+The simplest way to process a book is to use the batch file:
 
-To process a single book image:
-
-```bash
-python extractor.py --image path/to/book_image.jpg --output book_metadata.json
+```
+process_book.bat [BOOK_ID]
 ```
 
-### Multiple Images for One Book
+For example:
 
-To process multiple images of the same book:
-
-```bash
-python extractor.py --image image1.jpg image2.jpg image3.jpg --output book_metadata.json
+```
+process_book.bat 1
 ```
 
-### Process a Book Directory
+This will:
+1. Process all images in the `books/1` directory
+2. Extract metadata using Ollama and Gemma3:4b
+3. Validate the extracted metadata
+4. Save the results to `output/book_1.json`
+5. Display a summary of the extracted information
 
-To process all images in a book directory:
+### Advanced Usage
 
-```bash
-python extractor.py --book-dir path/to/book_directory --output book_metadata.json
+You can also use the Python script directly for more options:
+
+```
+python process_book.py [BOOK_ID] --output-dir [OUTPUT_DIR] --model [MODEL_NAME]
 ```
 
-### Batch Processing
+For example:
 
-To process multiple book directories at once:
-
-```bash
-python batch_processor.py path/to/books_directory --output-dir path/to/output_directory --output-file all_books.json
+```
+python process_book.py 1 --output-dir my_results --model llava
 ```
 
-#### Batch Processing Options
+## Output Format
 
-- `--workers N`: Use N worker threads for parallel processing (default: 1)
-- `--model MODEL_NAME`: Use a different Ollama model (default: gemma3:4b)
-- `--prompt-file PATH`: Use a custom prompt file
+The extracted metadata is saved as a JSON file with the following structure:
 
----
+```json
+{
+  "title": "Book Title",
+  "subtitle": "Book Subtitle",
+  "authors": ["Author Name"],
+  "publisher": "Publisher Name",
+  "publication_date": "2023",
+  "isbn_10": "1234567890",
+  "isbn_13": "9781234567890",
+  "asin": "B123456789",
+  "edition": "First Edition",
+  "binding_type": "Hardcover",
+  "language": "English",
+  "page_count": 300,
+  "categories": ["Fiction", "Mystery"],
+  "description": "Book description...",
+  "condition_keywords": ["dust jacket", "signed copy"],
+  "price": {
+    "currency": "USD",
+    "amount": 19.99
+  }
+}
+```
 
-## **Development Milestones**
+## Validation
 
-* [x] **M1:** Create `prompts/book_metadata_prompt.txt`
-* [x] **M2:** Create `extractor.py` to call Ollama with an image
-* [x] **M3:** Implement JSON parsing & validation
-* [x] **M4:** Add CLI interface for single-image runs
-* [x] **M5:** Implement batch processing for multiple books
-* [ ] **M6:** Prepare for pricing integration
+The script validates the extracted metadata to ensure:
+- It conforms to the expected JSON schema
+- Required fields are present
+- ISBN formats are valid
+- Arrays are properly formatted
 
----
-
-## **Key Decisions**
-
-* **VLM Model**: [Gemma3:4b](https://ollama.ai/library/gemma3) via Ollama
-* **Strict JSON Schema**: Required for downstream pricing logic
-* **Pricing Integration**: Will be modular and opt-in
-* **Batch Support**: Built after single-image pipeline
-
----
-
-## **Future Work**
-
-* **Phase 2**: Pricing Engine
-* **Phase 3**: Bulk Ingestion Optimization
-* **Phase 4**: Multi-Platform Sync
+If validation fails, the metadata is still saved but with an additional `_validation_error` field.
