@@ -1,0 +1,36 @@
+{
+  "image_path": "C:\\Users\\PC\\Desktop\\projects_and_code\\Work\\BB-OCR\\books\\2a\\IMG_9684.JPG",
+  "preprocessing_used": false,
+  "easyocr": {
+    "processing_time": 6.816439390182495,
+    "text_length": 244,
+    "text": "Beyond the Frontier A Romance of Early Days in the Middle West RANDALL  PARRISH AuTHOR OF 20 {'When Wilderness was King; {The Maid of the Forest, Etc A. La BURT COMPANY Publishers New York Published by Arrangements with A. \u20ac McCLORG & Co. By 20",
+    "preprocessed_image": null,
+    "book_metadata": {
+      "title": "Beyond the Frontier A Romance of Early Days in the Middle West RANDALL  PARRISH AuTHOR OF 20 {'When Wilderness was King; {The Maid of the Forest, Etc A. La BURT COMPANY Publishers New York Published by Arrangements with A. \u20ac McCLORG & Co. By 20",
+      "author": null,
+      "publisher": "La BURT COMPANY Publishers",
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": "romance",
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 1.1211388111114502,
+    "text_length": 248,
+    "text": "Beyond the Frontier\n\nA Romance of Early Days in the\nMiddle West\nBy RANDALL PARRISH\n\nAUTHOR OF\n\n\u2018\u00a2When Wilderness was King,\u201d\n\u2018The Maid of the Forest,\u201d Etc.\n\nA. L. BURT COMPANY\nPublishers New York\n\nPublished by Arrangements with A. C. McCLuRG & Co.\n\n",
+    "preprocessed_image": null,
+    "book_metadata": {
+      "title": "Beyond the Frontier",
+      "author": "A Romance of Early Days in the",
+      "publisher": "BURT COMPANY\nPublishers",
+      "year": null,
+      "isbn": null,
+      "price": null,
+      "genre": "romance",
+      "series": null
+    }
+  }
+}

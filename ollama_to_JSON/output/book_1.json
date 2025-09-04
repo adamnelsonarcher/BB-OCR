@@ -10,14 +10,22 @@
   "isbn_13": null,
   "asin": null,
   "edition": null,
-  "binding_type": null,
-  "language": null,
+  "binding_type": "hardcover",
+  "language": "English",
   "page_count": null,
-  "categories": [],
+  "categories": [
+    "Fiction",
+    "American Literature",
+    "Children's Literature"
+  ],
   "description": null,
-  "condition_keywords": [],
+  "condition_keywords": [
+    "worn",
+    "aged",
+    "used"
+  ],
   "price": {
-    "currency": null,
+    "currency": "USD",
     "amount": null
   },
   "evidence": {

@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+"""
+Enhanced Book Metadata Extractor
+
+This script combines OCR preprocessing with Ollama vision-language models
+to extract more accurate structured book metadata from images.
+"""
+
+import os
+import sys
+import json
+import base64
+import argparse
+from pathlib import Path
+from typing import Dict, List, Any, Optional, Union, Tuple
+import requests
+from PIL import Image
+import jsonschema
+import easyocr
+import pytesseract
+
+# Add the parent directories to the path to import from other modules
+parent_dir = os.path.dirname(os.path.abspath(__file__))
+ocr_testing_dir = os.path.join(os.path.dirname(parent_dir), "ocr_testing")
+sys.path.append(ocr_testing_dir)
+
+# Import preprocessing and heuristic extraction modules
+try:
+    from preprocessing.image_preprocessor import preprocess_for_book_cover
+    from hueristics.book_extractor import extract_book_metadata_from_text
+    PREPROCESSING_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import OCR testing modules: {e}")
+    print("Make sure the ocr_testing directory is available in the parent directory.")
+    PREPROCESSING_AVAILABLE = False
+    
+    # Define fallback functions
+    def preprocess_for_book_cover(image_path, output_path=None):
+        """Fallback function when preprocessing is not available."""
+        return image_path, output_path, ["original"]
+    
+    def extract_book_metadata_from_text(text):
+        """Fallback function when heuristic extraction is not available."""
+        return {}
+
+# Define the JSON schema for validation
+METADATA_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": ["string", "null"]},
+        "subtitle": {"type": ["string", "null"]},
+        "authors": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "publisher": {"type": ["string", "null"]},
+        "publication_date": {"type": ["string", "null"]},
+        "isbn_10": {"type": ["string", "null"]},
+        "isbn_13": {"type": ["string", "null"]},
+        "asin": {"type": ["string", "null"]},
+        "edition": {"type": ["string", "null"]},
+        "binding_type": {"type": ["string", "null"]},
+        "language": {"type": ["string", "null"]},
+        "page_count": {"type": ["integer", "null"]},
+        "categories": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "description": {"type": ["string", "null"]},
+        "condition_keywords": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "price": {
+            "type": "object",
+            "properties": {
+                "currency": {"type": ["string", "null"]},
+                "amount": {"type": ["number", "null"]}
+            }
+        },
+        "evidence": {
+            "type": "object",
+            "properties": {
+                "title_snippet": {"type": ["string", "null"]},
+                "publisher_snippet": {"type": ["string", "null"]},
+                "publication_year_snippet": {"type": ["string", "null"]},
+                "isbn_snippet": {"type": ["string", "null"]},
+                "notes": {"type": ["string", "null"]}
+            }
+        }
+    }
+}
+
+class EnhancedBookMetadataExtractor:
+    """Extract book metadata from images using OCR + Ollama vision-language model."""
+    
+    def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True):
+        """Initialize the extractor with the specified model, OCR engine, and preprocessing options."""
+        self.model = model
+        self.ollama_url = "http://localhost:11434/api/generate"
+        self.ocr_engine = ocr_engine.lower()
+        self.use_preprocessing = use_preprocessing
+        
+        # Initialize OCR engines
+        if self.ocr_engine == "easyocr":
+            self.easyocr_reader = easyocr.Reader(['en'])
+        
+        # Load the enhanced prompt from file
+        if prompt_file is None:
+            prompt_file = os.path.join(
+                os.path.dirname(os.path.abspath(__file__)), 
+                "prompts", 
+                "enhanced_book_metadata_prompt.txt"
+            )
+        
+        with open(prompt_file, "r", encoding="utf-8") as f:
+            self.prompt_template = f.read()
+    
+    def encode_image(self, image_path: str) -> str:
+        """Encode an image to base64."""
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode("utf-8")
+    
+    def extract_text_with_ocr(self, image_path: str) -> Tuple[str, Dict[str, Any]]:
+        """Extract text from an image using OCR and return both text and heuristic metadata."""
+        # Apply preprocessing if enabled
+        preprocessed_image_path = image_path
+        if self.use_preprocessing and PREPROCESSING_AVAILABLE:
+            # Create temporary preprocessed image
+            temp_dir = os.path.join(os.path.dirname(image_path), "temp_preprocessed")
+            os.makedirs(temp_dir, exist_ok=True)
+            
+            base_name = os.path.splitext(os.path.basename(image_path))[0]
+            preprocessed_image_path = os.path.join(temp_dir, f"{base_name}_preprocessed.png")
+            
+            try:
+                _, preprocessed_image_path, _ = preprocess_for_book_cover(image_path, preprocessed_image_path)
+            except Exception as e:
+                print(f"Warning: Preprocessing failed for {image_path}: {e}")
+                preprocessed_image_path = image_path
+        elif self.use_preprocessing and not PREPROCESSING_AVAILABLE:
+            print(f"Warning: Preprocessing requested but not available for {image_path}")
+        
+        # Extract text using selected OCR engine
+        text = ""
+        try:
+            if self.ocr_engine == "easyocr":
+                results = self.easyocr_reader.readtext(preprocessed_image_path)
+                text = " ".join([result[1] for result in results])
+            elif self.ocr_engine == "tesseract":
+                image = Image.open(preprocessed_image_path)
+                text = pytesseract.image_to_string(image)
+            else:
+                raise ValueError(f"Unsupported OCR engine: {self.ocr_engine}")
+        except Exception as e:
+            print(f"Warning: OCR failed for {image_path}: {e}")
+            text = ""
+        
+        # Extract heuristic metadata from the OCR text
+        heuristic_metadata = extract_book_metadata_from_text(text) if text else {}
+        
+        # Clean up temporary files
+        if self.use_preprocessing and preprocessed_image_path != image_path:
+            try:
+                os.remove(preprocessed_image_path)
+                # Remove temp directory if empty
+                temp_dir = os.path.dirname(preprocessed_image_path)
+                if os.path.exists(temp_dir) and not os.listdir(temp_dir):
+                    os.rmdir(temp_dir)
+            except Exception:
+                pass  # Ignore cleanup errors
+        
+        return text, heuristic_metadata
+    
+    def create_enhanced_prompt(self, ocr_texts: List[str], heuristic_metadata: Dict[str, Any]) -> str:
+        """Create an enhanced prompt that includes OCR context."""
+        ocr_context = ""
+        if ocr_texts:
+            ocr_context = "\n\nADDITIONAL OCR CONTEXT FROM INFORMATION PAGES:\n"
+            for i, text in enumerate(ocr_texts, 1):
+                if text.strip():
+                    ocr_context += f"\nPage {i+1} OCR Text:\n{text.strip()}\n"
+        
+        heuristic_context = ""
+        if heuristic_metadata:
+            heuristic_context = f"\n\nHEURISTIC METADATA EXTRACTED FROM OCR:\n{json.dumps(heuristic_metadata, indent=2)}\n"
+            heuristic_context += "\nUse this heuristic data as additional context, but prioritize what you can directly see in the images. The OCR may contain errors."
+        
+        return self.prompt_template + ocr_context + heuristic_context
+    
+    def extract_metadata_from_images(self, image_paths: List[str], ocr_image_indices: List[int] = None) -> Dict[str, Any]:
+        """
+        Extract metadata from multiple book images with OCR enhancement.
+        
+        Args:
+            image_paths: List of image file paths
+            ocr_image_indices: List of indices (0-based) of images to run OCR on. 
+                              If None, defaults to [1, 2] (2nd and 3rd images)
+        """
+        if not image_paths:
+            raise Exception("No image paths provided")
+        
+        # Default to processing 2nd and 3rd images with OCR (indices 1 and 2)
+        if ocr_image_indices is None:
+            ocr_image_indices = [1, 2] if len(image_paths) > 2 else [1] if len(image_paths) > 1 else []
+        
+        # Extract OCR text from specified images
+        ocr_texts = []
+        combined_heuristic_metadata = {}
+        
+        print(f"Running OCR on {len(ocr_image_indices)} information pages...")
+        for idx in ocr_image_indices:
+            if 0 <= idx < len(image_paths):
+                print(f"Processing OCR for image {idx + 1}: {os.path.basename(image_paths[idx])}")
+                ocr_text, heuristic_meta = self.extract_text_with_ocr(image_paths[idx])
+                if ocr_text.strip():
+                    ocr_texts.append(ocr_text)
+                    # Merge heuristic metadata, preferring non-null values
+                    for key, value in heuristic_meta.items():
+                        if value and (key not in combined_heuristic_metadata or not combined_heuristic_metadata[key]):
+                            combined_heuristic_metadata[key] = value
+        
+        # Create enhanced prompt with OCR context
+        enhanced_prompt = self.create_enhanced_prompt(ocr_texts, combined_heuristic_metadata)
+        
+        # Encode all images for Ollama
+        print(f"Encoding {len(image_paths)} images for vision model...")
+        images = [self.encode_image(img_path) for img_path in image_paths]
+        
+        # Create the request payload
+        payload = {
+            "model": self.model,
+            "prompt": enhanced_prompt,
+            "stream": False,
+            "images": images
+        }
+        
+        print("Sending request to Ollama with enhanced prompt...")
+        
+        # Send request to Ollama
+        response = requests.post(self.ollama_url, json=payload)
+        
+        if response.status_code != 200:
+            raise Exception(f"Error from Ollama API: {response.text}")
+        
+        # Extract the response
+        result = response.json()
+        response_text = result.get("response", "")
+        
+        # Parse the JSON from the response
+        try:
+            # Remove any markdown formatting
+            response_text = response_text.replace("```json", "").replace("```", "")
+            
+            # Try to find JSON in the response
+            json_start = response_text.find("{")
+            json_end = response_text.rfind("}")
+            
+            if json_start >= 0 and json_end >= 0:
+                json_str = response_text[json_start:json_end+1]
+                # Replace template placeholders with null values
+                json_str = json_str.replace('"string | null"', 'null')
+                json_str = json_str.replace('"integer | null"', 'null')
+                json_str = json_str.replace('"float | null"', 'null')
+                json_str = json_str.replace('"YYYY | null"', 'null')
+                json_str = json_str.replace('["string", "..."] | []', '[]')
+                
+                metadata = json.loads(json_str)
+            else:
+                metadata = json.loads(response_text)
+                
+            # Validate against schema
+            jsonschema.validate(instance=metadata, schema=METADATA_SCHEMA)
+            
+            # Add processing metadata
+            metadata["_processing_info"] = {
+                "ocr_engine": self.ocr_engine,
+                "preprocessing_used": self.use_preprocessing,
+                "ocr_images_processed": len(ocr_texts),
+                "total_images": len(image_paths),
+                "heuristic_metadata_found": bool(combined_heuristic_metadata)
+            }
+            
+            return metadata
+            
+        except json.JSONDecodeError as e:
+            # If JSON parsing fails, return a structured error response with heuristic fallback
+            print(f"Warning: Failed to parse JSON from Ollama response: {e}")
+            fallback_metadata = {
+                "title": combined_heuristic_metadata.get("title"),
+                "subtitle": None,
+                "authors": [combined_heuristic_metadata.get("author")] if combined_heuristic_metadata.get("author") else [],
+                "publisher": combined_heuristic_metadata.get("publisher"),
+                "publication_date": combined_heuristic_metadata.get("year"),
+                "isbn_10": None,
+                "isbn_13": combined_heuristic_metadata.get("isbn") if combined_heuristic_metadata.get("isbn") and len(combined_heuristic_metadata.get("isbn", "").replace("-", "")) == 13 else None,
+                "asin": None,
+                "edition": None,
+                "binding_type": None,
+                "language": None,
+                "page_count": None,
+                "categories": [],
+                "description": None,
+                "condition_keywords": [],
+                "price": {
+                    "currency": None,
+                    "amount": float(combined_heuristic_metadata.get("price", 0)) if combined_heuristic_metadata.get("price") else None
+                },
+                "evidence": {
+                    "title_snippet": None,
+                    "publisher_snippet": None,
+                    "publication_year_snippet": None,
+                    "isbn_snippet": None,
+                    "notes": f"Ollama parsing failed, using OCR heuristics. Error: {str(e)}"
+                },
+                "_processing_info": {
+                    "ocr_engine": self.ocr_engine,
+                    "preprocessing_used": self.use_preprocessing,
+                    "ocr_images_processed": len(ocr_texts),
+                    "total_images": len(image_paths),
+                    "heuristic_metadata_found": bool(combined_heuristic_metadata),
+                    "fallback_used": True,
+                    "ollama_error": str(e)
+                }
+            }
+            return fallback_metadata
+            
+        except jsonschema.exceptions.ValidationError as e:
+            raise Exception(f"JSON validation failed: {e}")
+    
+    def process_book_directory(self, book_dir: str, ocr_image_indices: List[int] = None) -> Dict[str, Any]:
+        """Process all images in a book directory with OCR enhancement."""
+        # Get all image files in the directory
+        image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.JPG', '.JPEG', '.PNG']
+        image_paths = []
+        
+        for file in sorted(os.listdir(book_dir)):  # Sort to ensure consistent ordering
+            if any(file.lower().endswith(ext.lower()) for ext in image_extensions):
+                image_paths.append(os.path.join(book_dir, file))
+        
+        if not image_paths:
+            raise Exception(f"No image files found in {book_dir}")
+        
+        print(f"Found {len(image_paths)} images in {book_dir}")
+        for i, path in enumerate(image_paths):
+            print(f"  {i+1}. {os.path.basename(path)}")
+        
+        # Extract metadata from the images
+        return self.extract_metadata_from_images(image_paths, ocr_image_indices)
+
+
+def main():
+    """Main entry point for the script."""
+    parser = argparse.ArgumentParser(description="Extract book metadata using enhanced OCR + Ollama pipeline")
+    parser.add_argument("--book-dir", type=str, help="Directory containing book images")
+    parser.add_argument("--image", type=str, nargs="+", help="Path to book image(s)")
+    parser.add_argument("--model", type=str, default="gemma3:4b", help="Ollama model to use")
+    parser.add_argument("--output", type=str, help="Output JSON file path")
+    parser.add_argument("--prompt-file", type=str, help="Custom prompt file path")
+    parser.add_argument("--ocr-engine", type=str, choices=["easyocr", "tesseract"], default="easyocr", help="OCR engine to use")
+    parser.add_argument("--no-preprocessing", action="store_true", help="Disable image preprocessing")
+    parser.add_argument("--ocr-indices", type=int, nargs="+", help="Indices of images to run OCR on (0-based, default: 1 2)")
+    parser.add_argument("--show-raw", action="store_true", help="Show raw Ollama response")
+    
+    args = parser.parse_args()
+    
+    # Initialize the extractor
+    extractor = EnhancedBookMetadataExtractor(
+        model=args.model, 
+        prompt_file=args.prompt_file,
+        ocr_engine=args.ocr_engine,
+        use_preprocessing=not args.no_preprocessing
+    )
+    
+    try:
+        # Process based on input type
+        if args.book_dir:
+            metadata = extractor.process_book_directory(args.book_dir, args.ocr_indices)
+        elif args.image:
+            metadata = extractor.extract_metadata_from_images(args.image, args.ocr_indices)
+        else:
+            parser.error("Either --book-dir or --image must be provided")
+            return
+        
+        # Output the metadata
+        if args.output:
+            with open(args.output, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+            print(f"Enhanced metadata saved to {args.output}")
+        else:
+            print(json.dumps(metadata, indent=2, ensure_ascii=False))
+            
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

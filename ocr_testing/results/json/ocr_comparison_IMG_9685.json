@@ -1,0 +1,36 @@
+{
+  "image_path": "C:\\Users\\PC\\Desktop\\projects_and_code\\Work\\BB-OCR\\books\\2a\\IMG_9685.JPG",
+  "preprocessing_used": false,
+  "easyocr": {
+    "processing_time": 4.047609329223633,
+    "text_length": 87,
+    "text": "Copyright A. C. McClurg & Co. 1915 Published October, 1915 Copyrighted in Great Britain",
+    "preprocessed_image": null,
+    "book_metadata": {
+      "title": "Copyright A. C. McClurg & Co. 1915 Published October, 1915 Copyrighted in Great Britain",
+      "author": null,
+      "publisher": null,
+      "year": "1915",
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  },
+  "tesseract": {
+    "processing_time": 0.9121768474578857,
+    "text_length": 90,
+    "text": "Copyright\nA. C. McClurg & Co.\n1915\n\nPublished October, 1915\n\nCopyrighted in Great Britain\n",
+    "preprocessed_image": null,
+    "book_metadata": {
+      "title": "Copyright",
+      "author": "A. C. McClurg & Co.",
+      "publisher": null,
+      "year": "1915",
+      "isbn": null,
+      "price": null,
+      "genre": null,
+      "series": null
+    }
+  }
+}
