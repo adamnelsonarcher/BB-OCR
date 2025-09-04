@@ -18,9 +18,8 @@ This enhanced pipeline addresses the common issue of vision models hallucinating
 - **Advanced preprocessing**: Applies CLAHE, denoising, sharpening, and other CV techniques
 - **Multiple OCR engines**: Supports both EasyOCR and Tesseract
 - **Intelligent fallback**: Uses heuristic metadata extraction if vision model fails
-- **Evidence tracking**: Provides verbatim snippets for critical fields
-- **Batch processing**: Parallel processing of multiple books with progress tracking
 - **Comprehensive validation**: JSON schema validation and quality checks
+- **Batch processing**: Parallel processing of multiple books with progress tracking
 - **Detailed reporting**: Processing statistics and error tracking
 
 ## Architecture
@@ -239,13 +238,6 @@ The pipeline generates structured JSON with the following fields:
     "currency": "USD",
     "amount": 15.99
   },
-  "evidence": {
-    "title_snippet": "Exact title text found",
-    "publisher_snippet": "Publisher text from page",
-    "publication_year_snippet": "Copyright 2023",
-    "isbn_snippet": "ISBN 978-1234567890",
-    "notes": "Additional processing notes"
-  },
   "_processing_info": {
     "ocr_engine": "easyocr",
     "preprocessing_used": true,
@@ -255,10 +247,6 @@ The pipeline generates structured JSON with the following fields:
   }
 }
 ```
-
-### Evidence Tracking
-
-The `evidence` object provides verbatim snippets from the source material, allowing you to verify the accuracy of extracted metadata.
 
 ### Processing Information
 

@@ -77,16 +77,6 @@ METADATA_SCHEMA = {
                 "currency": {"type": ["string", "null"]},
                 "amount": {"type": ["number", "null"]}
             }
-        },
-        "evidence": {
-            "type": "object",
-            "properties": {
-                "title_snippet": {"type": ["string", "null"]},
-                "publisher_snippet": {"type": ["string", "null"]},
-                "publication_year_snippet": {"type": ["string", "null"]},
-                "isbn_snippet": {"type": ["string", "null"]},
-                "notes": {"type": ["string", "null"]}
-            }
         }
     }
 }
@@ -423,13 +413,6 @@ class EnhancedBookMetadataExtractor:
                 "price": {
                     "currency": None,
                     "amount": float(combined_heuristic_metadata.get("price", 0)) if combined_heuristic_metadata.get("price") else None
-                },
-                "evidence": {
-                    "title_snippet": None,
-                    "publisher_snippet": None,
-                    "publication_year_snippet": None,
-                    "isbn_snippet": None,
-                    "notes": f"Ollama parsing failed, using OCR heuristics. Error: {str(e)}"
                 },
                 "_processing_info": {
                     "ocr_engine": self.ocr_engine,

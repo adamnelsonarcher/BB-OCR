@@ -53,16 +53,6 @@ METADATA_SCHEMA = {
                 "currency": {"type": ["string", "null"]},
                 "amount": {"type": ["number", "null"]}
             }
-        },
-        "evidence": {
-            "type": "object",
-            "properties": {
-                "title_snippet": {"type": ["string", "null"]},
-                "publisher_snippet": {"type": ["string", "null"]},
-                "publication_year_snippet": {"type": ["string", "null"]},
-                "isbn_snippet": {"type": ["string", "null"]},
-                "notes": {"type": ["string", "null"]}
-            }
         }
     }
 }
@@ -218,22 +208,6 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
         price = metadata.get('price', {})
         if price.get('amount'):
             print(f"💰 Price: {price.get('currency', '')} {price.get('amount', '')}")
-        
-        # Print evidence if available
-        evidence = metadata.get('evidence', {})
-        if any(evidence.values()):
-            print(f"\n🔍 EVIDENCE SNIPPETS:")
-            print("-" * 40)
-            if evidence.get('title_snippet'):
-                print(f"📖 Title: '{evidence['title_snippet']}'")
-            if evidence.get('publisher_snippet'):
-                print(f"🏢 Publisher: '{evidence['publisher_snippet']}'")
-            if evidence.get('publication_year_snippet'):
-                print(f"📅 Year: '{evidence['publication_year_snippet']}'")
-            if evidence.get('isbn_snippet'):
-                print(f"📚 ISBN: '{evidence['isbn_snippet']}'")
-            if evidence.get('notes'):
-                print(f"📝 Notes: {evidence['notes']}")
         
         # Calculate and display processing time
         end_time = time.time()
