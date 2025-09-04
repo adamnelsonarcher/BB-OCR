@@ -132,13 +132,19 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
     os.makedirs(output_dir, exist_ok=True)
     output_file = os.path.join(output_dir, f"book_{book_id}_enhanced.json")
     
-    print(f"Processing book {book_id} with enhanced pipeline...")
-    print(f"Book directory: {book_dir}")
-    print(f"Using model: {model}")
-    print(f"OCR engine: {ocr_engine}")
-    print(f"Preprocessing: {'enabled' if use_preprocessing else 'disabled'}")
+    print(f"\n🚀 ENHANCED BOOK PROCESSING STARTED")
+    print(f"=" * 60)
+    print(f"📖 Book ID: {book_id}")
+    print(f"📁 Book directory: {book_dir}")
+    print(f"🤖 Ollama model: {model}")
+    print(f"👁️  OCR engine: {ocr_engine}")
+    print(f"🔧 Image preprocessing: {'✅ enabled' if use_preprocessing else '❌ disabled'}")
     if ocr_indices:
-        print(f"OCR indices: {ocr_indices}")
+        print(f"📋 OCR target indices: {ocr_indices}")
+    else:
+        print(f"📋 OCR target indices: [1, 2] (default)")
+    print(f"💾 Output file: {output_file}")
+    print(f"=" * 60)
     
     # Track processing time
     start_time = time.time()
@@ -154,19 +160,20 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
         # Process the book directory
         metadata = extractor.process_book_directory(book_dir, ocr_indices)
         
-        # Display raw model output if requested and available
+        # Display processing information if requested and available
         if show_raw and "_processing_info" in metadata:
-            print("\n--- Processing Information ---")
+            print(f"\n📊 DETAILED PROCESSING INFORMATION")
+            print(f"=" * 50)
             processing_info = metadata["_processing_info"]
-            print(f"OCR Engine: {processing_info.get('ocr_engine', 'N/A')}")
-            print(f"Preprocessing Used: {processing_info.get('preprocessing_used', 'N/A')}")
-            print(f"OCR Images Processed: {processing_info.get('ocr_images_processed', 0)}")
-            print(f"Total Images: {processing_info.get('total_images', 0)}")
-            print(f"Heuristic Metadata Found: {processing_info.get('heuristic_metadata_found', False)}")
+            print(f"🤖 OCR Engine: {processing_info.get('ocr_engine', 'N/A')}")
+            print(f"🔧 Preprocessing Used: {'✅' if processing_info.get('preprocessing_used') else '❌'}")
+            print(f"📄 OCR Images Processed: {processing_info.get('ocr_images_processed', 0)}")
+            print(f"📸 Total Images: {processing_info.get('total_images', 0)}")
+            print(f"📊 Heuristic Metadata Found: {'✅' if processing_info.get('heuristic_metadata_found') else '❌'}")
             if processing_info.get('fallback_used'):
-                print(f"Fallback Used: {processing_info.get('fallback_used', False)}")
-                print(f"Ollama Error: {processing_info.get('ollama_error', 'N/A')}")
-            print("--------------------------------\n")
+                print(f"⚠️  Fallback Used: ✅")
+                print(f"❌ Ollama Error: {processing_info.get('ollama_error', 'N/A')}")
+            print(f"=" * 50)
         
         # Validate the metadata
         is_valid, validation_msg = validate_metadata(metadata)
@@ -185,46 +192,56 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
         print(f"Enhanced metadata saved to {output_file}")
         
         # Print a comprehensive summary of the extracted metadata
-        print("\nEnhanced Extracted Metadata Summary:")
-        print("=" * 50)
-        print(f"Title: {metadata.get('title')}")
-        print(f"Subtitle: {metadata.get('subtitle')}")
-        print(f"Author(s): {', '.join(metadata.get('authors', []))}")
-        print(f"Publisher: {metadata.get('publisher')}")
-        print(f"Publication Date: {metadata.get('publication_date')}")
-        print(f"ISBN-10: {metadata.get('isbn_10')}")
-        print(f"ISBN-13: {metadata.get('isbn_13')}")
-        print(f"Edition: {metadata.get('edition')}")
-        print(f"Binding: {metadata.get('binding_type')}")
-        print(f"Language: {metadata.get('language')}")
-        print(f"Page Count: {metadata.get('page_count')}")
-        print(f"Categories: {', '.join(metadata.get('categories', []))}")
-        print(f"Condition Keywords: {', '.join(metadata.get('condition_keywords', []))}")
+        print(f"\n📋 ENHANCED METADATA EXTRACTION SUMMARY")
+        print("=" * 60)
+        print(f"📖 Title: {metadata.get('title') or '❌ Not found'}")
+        if metadata.get('subtitle'):
+            print(f"📖 Subtitle: {metadata.get('subtitle')}")
+        print(f"✍️  Author(s): {', '.join(metadata.get('authors', [])) or '❌ Not found'}")
+        print(f"🏢 Publisher: {metadata.get('publisher') or '❌ Not found'}")
+        print(f"📅 Publication Date: {metadata.get('publication_date') or '❌ Not found'}")
+        print(f"📚 ISBN-10: {metadata.get('isbn_10') or '❌ Not found'}")
+        print(f"📚 ISBN-13: {metadata.get('isbn_13') or '❌ Not found'}")
+        if metadata.get('edition'):
+            print(f"📖 Edition: {metadata.get('edition')}")
+        if metadata.get('binding_type'):
+            print(f"📘 Binding: {metadata.get('binding_type')}")
+        if metadata.get('language'):
+            print(f"🌐 Language: {metadata.get('language')}")
+        if metadata.get('page_count'):
+            print(f"📄 Page Count: {metadata.get('page_count')}")
+        if metadata.get('categories'):
+            print(f"🏷️  Categories: {', '.join(metadata.get('categories', []))}")
+        if metadata.get('condition_keywords'):
+            print(f"🔍 Condition Keywords: {', '.join(metadata.get('condition_keywords', []))}")
         
         price = metadata.get('price', {})
         if price.get('amount'):
-            print(f"Price: {price.get('currency', '')} {price.get('amount', '')}")
+            print(f"💰 Price: {price.get('currency', '')} {price.get('amount', '')}")
         
         # Print evidence if available
         evidence = metadata.get('evidence', {})
         if any(evidence.values()):
-            print("\nEvidence Found:")
-            print("-" * 30)
+            print(f"\n🔍 EVIDENCE SNIPPETS:")
+            print("-" * 40)
             if evidence.get('title_snippet'):
-                print(f"Title: '{evidence['title_snippet']}'")
+                print(f"📖 Title: '{evidence['title_snippet']}'")
             if evidence.get('publisher_snippet'):
-                print(f"Publisher: '{evidence['publisher_snippet']}'")
+                print(f"🏢 Publisher: '{evidence['publisher_snippet']}'")
             if evidence.get('publication_year_snippet'):
-                print(f"Year: '{evidence['publication_year_snippet']}'")
+                print(f"📅 Year: '{evidence['publication_year_snippet']}'")
             if evidence.get('isbn_snippet'):
-                print(f"ISBN: '{evidence['isbn_snippet']}'")
+                print(f"📚 ISBN: '{evidence['isbn_snippet']}'")
             if evidence.get('notes'):
-                print(f"Notes: {evidence['notes']}")
+                print(f"📝 Notes: {evidence['notes']}")
         
         # Calculate and display processing time
         end_time = time.time()
         processing_time = end_time - start_time
-        print(f"\nTotal processing time: {processing_time:.2f} seconds")
+        print(f"\n⏱️  PROCESSING COMPLETED")
+        print(f"   Total time: {processing_time:.2f} seconds")
+        print(f"   Status: {'✅ Success' if is_valid else '⚠️  Success with validation warnings'}")
+        print("=" * 60)
         
         return is_valid
         
