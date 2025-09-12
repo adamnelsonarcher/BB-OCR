@@ -1,0 +1,19 @@
+body { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; margin: 0; background: #0b0d10; color: #cdd9e5; }
+header { padding: 12px 16px; background: #11161c; border-bottom: 1px solid #1f2730; display:flex; align-items:center; justify-content:space-between; }
+h1 { font-size: 18px; margin: 0; color:#7dd3fc; }
+.env { font-size: 12px; color:#9fb3c8; }
+section { padding: 16px; }
+.controls .row { display:flex; gap: 8px; align-items:center; margin-bottom: 8px; }
+.controls input, .controls select, .controls button { background:#0e141b; color:#cdd9e5; border:1px solid #223042; padding:6px 8px; }
+.controls button { cursor:pointer; }
+.video-panel { display:flex; gap: 16px; align-items:flex-start; }
+.video-panel video { width: 480px; height:auto; background:#000; border:1px solid #223042; }
+.hidden { display:none; }
+.status { color:#a7f3d0; margin-bottom:8px; }
+.error { color:#fca5a5; }
+.result h2 { margin: 0 0 8px 0; font-size: 16px; color:#93c5fd; }
+.kv { border-collapse: collapse; width: 100%; }
+.kv td { border: 1px solid #223042; padding: 6px 8px; vertical-align: top; }
+.kv td:first-child { width: 220px; color:#9fb3c8; }
+.actions { margin-top: 8px; display:flex; gap: 8px; }
+.video-panel.disabled { opacity: 0.5; }

@@ -2,3 +2,4 @@
 gradio_GPT/.env
 /vlm_testing/.venv
 vlm_testing/llama/OllamaSetup.exe
+/img_to_json/i2j_ui/.venv

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Image→JSON Book Scanner</title>
+	<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+	<header>
+		<h1>Image→JSON Book Scanner</h1>
+		<div class="env">Backend: <span id="env-pipeline"></span></div>
+	</header>
+
+	<section class="controls">
+		<div class="row">
+			<label>Model:</label>
+			<input id="model" value="gemma3:4b" />
+			<label>OCR:</label>
+			<select id="ocr">
+				<option value="easyocr" selected>easyocr</option>
+				<option value="tesseract">tesseract</option>
+			</select>
+			<label><input type="checkbox" id="preproc" checked> preprocessing</label>
+		</div>
+		<div class="row">
+			<button id="capture">Capture + Process</button>
+			<input type="file" id="file" accept="image/*">
+		</div>
+	</section>
+
+	<section class="video-panel">
+		<video id="video" autoplay playsinline></video>
+		<canvas id="canvas" class="hidden"></canvas>
+	</section>
+
+	<section class="result">
+		<h2>Result</h2>
+		<div id="status" class="status">Idle</div>
+		<div id="error" class="error hidden"></div>
+		<div id="meta-table"></div>
+		<div class="actions hidden" id="actions">
+			<button id="accept">Accept</button>
+			<button id="reject">Reject</button>
+		</div>
+	</section>
+
+	<script src="/static/script.js"></script>
+</body>
+</html>
