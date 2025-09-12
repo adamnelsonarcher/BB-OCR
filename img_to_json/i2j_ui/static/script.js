@@ -10,6 +10,7 @@ const metaTable = document.getElementById('meta-table');
 const actions = document.getElementById('actions');
 const btnAccept = document.getElementById('accept');
 const btnReject = document.getElementById('reject');
+const btnPricing = document.getElementById('pricing');
 const envPipeline = document.getElementById('env-pipeline');
 const queueList = document.getElementById('queue-list');
 const modelSel = document.getElementById('model');
@@ -103,6 +104,19 @@ function refreshQueueList() {
 	});
 }
 
+function readTableToObject() {
+	const rows = Array.from(document.querySelectorAll('table.kv tbody tr'));
+	const obj = {};
+	for (const tr of rows) {
+		const tds = tr.querySelectorAll('td');
+		const k = tds[0].textContent.trim();
+		let v = tds[1].textContent.trim();
+		try { v = JSON.parse(v); } catch {}
+		obj[k] = v;
+	}
+	return obj;
+}
+
 async function processSingle(blob, filename = 'capture.jpg') {
 	statusEl.textContent = 'Uploading...';
 	errorEl.classList.add('hidden');
@@ -187,16 +201,7 @@ fileInput.addEventListener('change', async (e) => {
 
 btnAccept.addEventListener('click', async () => {
 	if (!lastId) return;
-	// Read table values back
-	const rows = Array.from(document.querySelectorAll('table.kv tbody tr'));
-	const metadata = {};
-	for (const tr of rows) {
-		const tds = tr.querySelectorAll('td');
-		const k = tds[0].textContent;
-		let v = tds[1].textContent;
-		try { v = JSON.parse(v); } catch {}
-		metadata[k] = v;
-	}
+	const metadata = readTableToObject();
 	const resp = await fetch('/api/accept', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
@@ -271,6 +276,27 @@ btnLoadExampleOutput.addEventListener('click', async () => {
 	statusEl.textContent = `Loaded saved output: ${data.file}`;
 	metaTable.innerHTML = renderTable(data.metadata);
 	actions.classList.remove('hidden');
+});
+
+btnPricing.addEventListener('click', async () => {
+	const meta = readTableToObject();
+	statusEl.textContent = 'Pricing lookup… (placeholder)';
+	const resp = await fetch('/api/pricing_lookup', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			isbn_13: meta['isbn_13'] || null,
+			isbn_10: meta['isbn_10'] || null,
+			title: meta['title'] || null,
+			authors: meta['authors'] || []
+		})
+	});
+	const data = await resp.json();
+	if (!resp.ok) {
+		statusEl.textContent = 'Pricing lookup failed';
+		return;
+	}
+	statusEl.textContent = data.message || 'Pricing lookup placeholder';
 });
 
 init();

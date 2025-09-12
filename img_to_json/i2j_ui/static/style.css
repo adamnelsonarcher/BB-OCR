@@ -19,10 +19,10 @@ section.block { padding: 20px; margin: 0; border: 1px solid #1f2730; background:
 .status { color:#a7f3d0; margin-bottom:8px; }
 .error { color:#fca5a5; }
 .result h2 { margin: 0 0 12px 0; font-size: 16px; color:#93c5fd; }
-.kv { border-collapse: collapse; width: 100%; }
-.kv th, .kv td { border: 1px solid #223042; padding: 8px 10px; vertical-align: top; }
+.kv { border-collapse: collapse; width: 100%; table-layout: fixed; }
+.kv th, .kv td { border: 1px solid #223042; padding: 8px 10px; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
 .kv th { background:#11161c; color:#9fb3c8; text-align:left; }
-.kv td:first-child { width: 260px; color:#9fb3c8; }
+.kv td:first-child { width: 260px; color:#9fb3c8; white-space: normal; }
 .actions { margin-top: 12px; display:flex; gap: 10px; }
 .video-panel.disabled { opacity: 0.5; }
 .queue { min-width: 240px; }

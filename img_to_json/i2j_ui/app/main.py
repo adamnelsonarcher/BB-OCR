@@ -37,7 +37,7 @@ STATIC_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "sta
 for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR]:
 	os.makedirs(d, exist_ok=True)
 
-app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.2")
+app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
 
 # CORS for local use
 app.add_middleware(
@@ -293,6 +293,30 @@ async def example_output(book_id: str):
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
 	return {"id": f"example_output_{book_id}", "file": os.path.basename(candidate), "metadata": metadata}
+
+
+class PricingLookupPayload(BaseModel):
+	isbn_13: Optional[str] = None
+	isbn_10: Optional[str] = None
+	title: Optional[str] = None
+	authors: Optional[List[str]] = None
+
+
+@app.post("/api/pricing_lookup")
+async def pricing_lookup(payload: PricingLookupPayload):
+	# Placeholder implementation; to be integrated with external pricing APIs later.
+	query = {
+		"isbn_13": payload.isbn_13,
+		"isbn_10": payload.isbn_10,
+		"title": payload.title,
+		"authors": payload.authors or [],
+	}
+	return {
+		"query": query,
+		"status": "not_implemented",
+		"message": "Pricing lookup placeholder. Integrate with Amazon/Google Books/Keepa/etc.",
+		"offers": [],
+	}
 
 
 @app.post("/api/accept")
