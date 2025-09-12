@@ -12,10 +12,10 @@
 		<div class="env">Backend: <span id="env-pipeline"></span></div>
 	</header>
 
-	<section class="controls">
+	<section class="controls block">
 		<div class="row">
 			<label>Model:</label>
-			<input id="model" value="gemma3:4b" />
+			<select id="model"></select>
 			<label>OCR:</label>
 			<select id="ocr">
 				<option value="easyocr" selected>easyocr</option>
@@ -24,17 +24,31 @@
 			<label><input type="checkbox" id="preproc" checked> preprocessing</label>
 		</div>
 		<div class="row">
-			<button id="capture">Capture + Process</button>
-			<input type="file" id="file" accept="image/*">
+			<button id="capture">Capture</button>
+			<button id="clear-queue">Clear Queue</button>
+			<input type="file" id="file" accept="image/*" multiple>
+			<button id="process-queued">Process Queued</button>
+		</div>
+		<div class="row">
+			<label>Examples:</label>
+			<select id="examples"></select>
+			<button id="run-example">Run Example</button>
 		</div>
 	</section>
 
-	<section class="video-panel">
-		<video id="video" autoplay playsinline></video>
+	<section class="video-panel block">
+		<div class="video-wrap">
+			<video id="video" autoplay playsinline></video>
+			<div class="overlay-box"></div>
+		</div>
 		<canvas id="canvas" class="hidden"></canvas>
+		<div class="queue">
+			<h3>Capture Queue</h3>
+			<ol id="queue-list"></ol>
+		</div>
 	</section>
 
-	<section class="result">
+	<section class="result block">
 		<h2>Result</h2>
 		<div id="status" class="status">Idle</div>
 		<div id="error" class="error hidden"></div>
