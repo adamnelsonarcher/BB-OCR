@@ -37,7 +37,7 @@ STATIC_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "sta
 for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR]:
 	os.makedirs(d, exist_ok=True)
 
-app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.1")
+app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.2")
 
 # CORS for local use
 app.add_middleware(
@@ -120,6 +120,18 @@ def _find_books_dir() -> Optional[str]:
 		os.path.join(os.path.dirname(PIPELINE_DIR), "books"),
 		os.path.join(os.path.dirname(PIPELINE_DIR), "ollama_to_JSON", "books"),
 		os.path.join(PROJECT_ROOT, "books"),
+	]
+	for p in candidates:
+		if os.path.isdir(p):
+			return p
+	return None
+
+
+def _find_test_output_dir() -> Optional[str]:
+	candidates = [
+		os.path.join(PIPELINE_DIR, "test_output"),
+		os.path.join(os.path.dirname(PIPELINE_DIR), "test_output"),
+		os.path.join(PROJECT_ROOT, "test_output"),
 	]
 	for p in candidates:
 		if os.path.isdir(p):
@@ -213,6 +225,7 @@ async def process_images(
 @app.get("/api/examples")
 async def examples():
 	books_dir = _find_books_dir()
+	test_output_dir = _find_test_output_dir()
 	if not books_dir:
 		return {"books_dir": None, "items": []}
 	items: List[Dict[str, Any]] = []
@@ -221,8 +234,12 @@ async def examples():
 		if not os.path.isdir(full):
 			continue
 		images = [f for f in sorted(os.listdir(full)) if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".tiff"))]
+		has_output = False
+		if test_output_dir:
+			candidate = os.path.join(test_output_dir, f"book_{entry}_enhanced.json")
+			has_output = os.path.isfile(candidate)
 		if images:
-			items.append({"id": entry, "count": len(images)})
+			items.append({"id": entry, "count": len(images), "has_output": has_output})
 	return {"books_dir": books_dir, "items": items}
 
 
@@ -260,6 +277,22 @@ async def process_example(payload: ExamplePayload):
 		"files": [os.path.basename(p) for p in image_paths],
 		"metadata": metadata,
 	}
+
+
+@app.get("/api/example_output")
+async def example_output(book_id: str):
+	test_output_dir = _find_test_output_dir()
+	if not test_output_dir:
+		raise HTTPException(status_code=404, detail="test_output directory not found")
+	candidate = os.path.join(test_output_dir, f"book_{book_id}_enhanced.json")
+	if not os.path.isfile(candidate):
+		raise HTTPException(status_code=404, detail="Saved output not found for example")
+	try:
+		with open(candidate, 'r', encoding='utf-8') as f:
+			metadata = json.load(f)
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
+	return {"id": f"example_output_{book_id}", "file": os.path.basename(candidate), "metadata": metadata}
 
 
 @app.post("/api/accept")

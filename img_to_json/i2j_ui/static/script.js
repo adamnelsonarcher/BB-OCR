@@ -17,6 +17,7 @@ const ocrSel = document.getElementById('ocr');
 const preprocChk = document.getElementById('preproc');
 const examplesSel = document.getElementById('examples');
 const btnRunExample = document.getElementById('run-example');
+const btnLoadExampleOutput = document.getElementById('load-example-output');
 
 let lastId = null;
 let captureQueue = []; // Array of Blobs
@@ -59,7 +60,7 @@ async function init() {
 		examplesSel.appendChild(placeholder);
 		for (const item of ex.items) {
 			const opt = document.createElement('option');
-			opt.value = item.id; opt.textContent = `${item.id} (${item.count})`;
+			opt.value = item.id; opt.textContent = `${item.id} (${item.count})${item.has_output ? ' • has output' : ''}`;
 			examplesSel.appendChild(opt);
 		}
 	} catch {}
@@ -245,6 +246,29 @@ btnRunExample.addEventListener('click', async () => {
 
 	lastId = data.id;
 	statusEl.textContent = `Processed example: ${id}`;
+	metaTable.innerHTML = renderTable(data.metadata);
+	actions.classList.remove('hidden');
+});
+
+btnLoadExampleOutput.addEventListener('click', async () => {
+	const id = examplesSel.value;
+	if (!id) return;
+	statusEl.textContent = `Loading saved output for ${id}...`;
+	errorEl.classList.add('hidden');
+	metaTable.innerHTML = '';
+	actions.classList.add('hidden');
+
+	const resp = await fetch(`/api/example_output?book_id=${encodeURIComponent(id)}`);
+	const data = await resp.json();
+	if (!resp.ok) {
+		statusEl.textContent = 'Error';
+		errorEl.textContent = data.detail || data.error || 'Unknown error';
+		errorEl.classList.remove('hidden');
+		return;
+	}
+
+	lastId = data.id;
+	statusEl.textContent = `Loaded saved output: ${data.file}`;
 	metaTable.innerHTML = renderTable(data.metadata);
 	actions.classList.remove('hidden');
 });

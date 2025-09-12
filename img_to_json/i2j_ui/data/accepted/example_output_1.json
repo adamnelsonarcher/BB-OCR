@@ -1,0 +1,35 @@
+{
+  "_processing_info": {
+    "ocr_engine": "easyocr",
+    "preprocessing_used": true,
+    "ocr_images_processed": 2,
+    "total_images": 3,
+    "heuristic_metadata_found": true
+  },
+  "asin": "",
+  "authors": "Edward Eggleston",
+  "binding_type": "",
+  "categories": "Fiction, American Literature",
+  "condition_keywords": "worn, used",
+  "description": "",
+  "edition": "",
+  "evidence": {
+    "title_snippet": "The Hoosier School-Master. A Novel. WITH TWENTY-NINE ILLUSTRATIONS",
+    "publisher_snippet": "Orange Judd Company, 1892",
+    "publication_year_snippet": "1892",
+    "isbn_snippet": null,
+    "notes": "The OCR text confirms the title, author, publisher, and publication date. The 1892 date aligns with the Orange Judd Company imprint. The ISBN is not present on the book physically."
+  },
+  "isbn_10": "",
+  "isbn_13": "",
+  "language": "English",
+  "page_count": "",
+  "price": {
+    "currency": "USD",
+    "amount": null
+  },
+  "publication_date": 1892,
+  "publisher": "Orange Judd Company",
+  "subtitle": "A Novel",
+  "title": "The Hoosier School-Master"
+}
