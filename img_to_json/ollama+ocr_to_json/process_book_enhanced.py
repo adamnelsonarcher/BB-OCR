@@ -86,7 +86,8 @@ def validate_metadata(metadata):
     return True, "Validation successful"
 
 def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_engine="easyocr", 
-                         use_preprocessing=True, ocr_indices=None, show_raw=True, books_dir=None):
+                         use_preprocessing=True, ocr_indices=None, show_raw=True, books_dir=None,
+                         crop_ocr=False, crop_margin=16, no_warm_model=False, extractor: EnhancedBookMetadataExtractor = None):
     """Process a single book by ID using the enhanced pipeline."""
     
     # Determine the book directory path
@@ -140,12 +141,16 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
     start_time = time.time()
     
     try:
-        # Initialize the enhanced extractor
-        extractor = EnhancedBookMetadataExtractor(
-            model=model,
-            ocr_engine=ocr_engine,
-            use_preprocessing=use_preprocessing
-        )
+        # Initialize or reuse the enhanced extractor
+        if extractor is None:
+            extractor = EnhancedBookMetadataExtractor(
+                model=model,
+                ocr_engine=ocr_engine,
+                use_preprocessing=use_preprocessing,
+                crop_for_ocr=crop_ocr,
+                crop_margin=crop_margin,
+                warm_model=not no_warm_model
+            )
         
         # Process the book directory
         metadata = extractor.process_book_directory(book_dir, ocr_indices)
@@ -245,6 +250,12 @@ def main():
                         help="Indices of images to run OCR on (0-based, default: 1 2)")
     parser.add_argument("--no-raw", action="store_true", 
                         help="Don't show processing information")
+    parser.add_argument("--crop-ocr", action="store_true", 
+                        help="Auto-crop text regions before OCR")
+    parser.add_argument("--crop-margin", type=int, default=16, 
+                        help="Margin pixels around detected text when cropping (default: 16)")
+    parser.add_argument("--no-warm-model", action="store_true", 
+                        help="Disable model warm-up on startup")
     parser.add_argument("--books-dir", type=str,
                         help="Path to books directory (auto-detected if not specified)")
     
@@ -276,7 +287,10 @@ def main():
         not args.no_preprocessing,
         args.ocr_indices,
         not args.no_raw,
-        args.books_dir
+        args.books_dir,
+        args.crop_ocr,
+        args.crop_margin,
+        args.no_warm_model
     )
     sys.exit(0 if success else 1)
 

@@ -307,7 +307,7 @@ Enable verbose output to see detailed processing information:
 python process_book_enhanced.py 1  # Shows processing info by default
 ```
 
-Check the generated JSON files for `_processing_info` and `evidence` fields to understand how metadata was extracted.
+Check the generated JSON files for `_processing_info` field to understand how metadata was extracted.
 
 ## Comparison with Original Pipeline
 
@@ -317,7 +317,6 @@ Check the generated JSON files for `_processing_info` and `evidence` fields to u
 | **Accuracy** | Moderate (hallucination issues) | High (OCR validation) |
 | **Processing** | Vision model only | OCR + Vision model |
 | **Fallback** | None | Heuristic extraction |
-| **Evidence** | Limited | Comprehensive snippets |
 | **Preprocessing** | None | Advanced CV techniques |
 | **Validation** | Basic | Multi-level validation |
 

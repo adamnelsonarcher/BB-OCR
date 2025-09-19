@@ -19,13 +19,14 @@ from tqdm import tqdm
 
 # Import the enhanced processor
 from process_book_enhanced import process_book_enhanced, validate_metadata
+from enhanced_extractor import EnhancedBookMetadataExtractor
 
 class EnhancedBatchProcessor:
     """Process multiple books using the enhanced OCR + Ollama pipeline."""
     
     def __init__(self, books_dir=None, output_dir="batch_output", model="gemma3:4b", 
                  ocr_engine="easyocr", use_preprocessing=True, ocr_indices=None, 
-                 max_workers=2, show_progress=True):
+                 max_workers=2, show_progress=True, crop_ocr=False, crop_margin=16, no_warm_model=False):
         """Initialize the batch processor."""
         self.books_dir = books_dir
         self.output_dir = output_dir
@@ -35,6 +36,9 @@ class EnhancedBatchProcessor:
         self.ocr_indices = ocr_indices
         self.max_workers = max_workers
         self.show_progress = show_progress
+        self.crop_ocr = crop_ocr
+        self.crop_margin = crop_margin
+        self.no_warm_model = no_warm_model
         
         # Statistics
         self.stats = {
@@ -104,6 +108,7 @@ class EnhancedBatchProcessor:
         
         try:
             # Process the book
+            # Reuse a single extractor per worker when running sequentially to keep model/ocr loaded
             success = process_book_enhanced(
                 book_id=book_id,
                 output_dir=self.output_dir,
@@ -112,7 +117,10 @@ class EnhancedBatchProcessor:
                 use_preprocessing=self.use_preprocessing,
                 ocr_indices=self.ocr_indices,
                 show_raw=False,  # Disable raw output in batch mode
-                books_dir=self.books_dir
+                books_dir=self.books_dir,
+                crop_ocr=self.crop_ocr,
+                crop_margin=self.crop_margin,
+                no_warm_model=self.no_warm_model
             )
             
             result['success'] = success
@@ -167,6 +175,7 @@ class EnhancedBatchProcessor:
         print(f"OCR engine: {self.ocr_engine}")
         print(f"Preprocessing: {'enabled' if self.use_preprocessing else 'disabled'}")
         print(f"Max workers: {self.max_workers}")
+        print(f"OCR crop: {'enabled' if self.crop_ocr else 'disabled'} (margin: {self.crop_margin})")
         if self.ocr_indices:
             print(f"OCR indices: {self.ocr_indices}")
         print("-" * 60)
@@ -178,8 +187,75 @@ class EnhancedBatchProcessor:
             if self.show_progress:
                 book_ids = tqdm(book_ids, desc="Processing books")
             
+            # Reuse a single extractor to keep OCR/model instances hot
+            reused_extractor = EnhancedBookMetadataExtractor(
+                model=self.model,
+                ocr_engine=self.ocr_engine,
+                use_preprocessing=self.use_preprocessing,
+                crop_for_ocr=self.crop_ocr,
+                crop_margin=self.crop_margin,
+                warm_model=not self.no_warm_model
+            )
+            
             for book_id in book_ids:
-                result = self._process_single_book(book_id)
+                # Use the reused extractor
+                single_start = time.time()
+                try:
+                    success = process_book_enhanced(
+                        book_id=book_id,
+                        output_dir=self.output_dir,
+                        model=self.model,
+                        ocr_engine=self.ocr_engine,
+                        use_preprocessing=self.use_preprocessing,
+                        ocr_indices=self.ocr_indices,
+                        show_raw=False,
+                        books_dir=self.books_dir,
+                        crop_ocr=self.crop_ocr,
+                        crop_margin=self.crop_margin,
+                        no_warm_model=self.no_warm_model,
+                        extractor=reused_extractor
+                    )
+                    output_file = os.path.join(self.output_dir, f"book_{book_id}_enhanced.json")
+                    validation_passed = False
+                    error_msg = None
+                    if os.path.exists(output_file):
+                        try:
+                            with open(output_file, 'r', encoding='utf-8') as f:
+                                metadata = json.load(f)
+                            is_valid, _ = validate_metadata(metadata)
+                            validation_passed = is_valid
+                        except Exception as ve:
+                            error_msg = f"Failed to validate output: {str(ve)}"
+                    else:
+                        error_msg = "Output file not created"
+                    result = {
+                        'book_id': book_id,
+                        'success': success,
+                        'validation_passed': validation_passed,
+                        'processing_time': time.time() - single_start,
+                        'error': error_msg,
+                        'output_file': output_file if os.path.exists(output_file) else None
+                    }
+                    with self.stats_lock:
+                        if result['success']:
+                            self.stats['successful'] += 1
+                        else:
+                            self.stats['failed'] += 1
+                        if result['validation_passed']:
+                            self.stats['validation_passed'] += 1
+                        else:
+                            self.stats['validation_failed'] += 1
+                except Exception as e:
+                    result = {
+                        'book_id': book_id,
+                        'success': False,
+                        'validation_passed': False,
+                        'processing_time': time.time() - single_start,
+                        'error': str(e),
+                        'output_file': None
+                    }
+                    with self.stats_lock:
+                        self.stats['failed'] += 1
                 results.append(result)
                 
                 if self.show_progress and hasattr(book_ids, 'set_postfix'):
@@ -314,6 +390,12 @@ def main():
                         help="Specific book IDs to process (default: all books)")
     parser.add_argument("--no-progress", action="store_true",
                         help="Disable progress bar")
+    parser.add_argument("--crop-ocr", action="store_true",
+                        help="Auto-crop text regions before OCR")
+    parser.add_argument("--crop-margin", type=int, default=16,
+                        help="Margin pixels around detected text when cropping (default: 16)")
+    parser.add_argument("--no-warm-model", action="store_true",
+                        help="Disable model warm-up on startup")
     
     args = parser.parse_args()
     
@@ -345,7 +427,10 @@ def main():
             use_preprocessing=not args.no_preprocessing,
             ocr_indices=args.ocr_indices,
             max_workers=args.max_workers,
-            show_progress=not args.no_progress
+            show_progress=not args.no_progress,
+            crop_ocr=args.crop_ocr,
+            crop_margin=args.crop_margin,
+            no_warm_model=args.no_warm_model
         )
         
         # Process the books

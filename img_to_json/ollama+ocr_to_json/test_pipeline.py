@@ -92,14 +92,7 @@ def test_validation_schema():
             "categories": [],
             "description": None,
             "condition_keywords": [],
-            "price": {"currency": None, "amount": None},
-            "evidence": {
-                "title_snippet": None,
-                "publisher_snippet": None,
-                "publication_year_snippet": None,
-                "isbn_snippet": None,
-                "notes": None
-            }
+            "price": {"currency": None, "amount": None}
         }
         
         is_valid, msg = validate_metadata(valid_metadata)

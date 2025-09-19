@@ -18,6 +18,8 @@ from PIL import Image
 import jsonschema
 import easyocr
 import pytesseract
+import cv2
+import numpy as np
 
 # Add the parent directories to the path to import from other modules
 parent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -84,16 +86,38 @@ METADATA_SCHEMA = {
 class EnhancedBookMetadataExtractor:
     """Extract book metadata from images using OCR + Ollama vision-language model."""
     
-    def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True):
-        """Initialize the extractor with the specified model, OCR engine, and preprocessing options."""
+    # Cache EasyOCR readers per language configuration to avoid reloading costs
+    _easyocr_reader_cache: Dict[str, easyocr.Reader] = {}
+
+    def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
+                 crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True):
+        """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
+
+        Args:
+            model: Ollama model name
+            prompt_file: Path to enhanced prompt template
+            ocr_engine: "easyocr" or "tesseract"
+            use_preprocessing: Apply image preprocessing before OCR
+            crop_for_ocr: Auto-crop text regions before OCR to reduce noise
+            crop_margin: Margin (in pixels) to add around detected text region when cropping
+            warm_model: Send a tiny request on init to keep/loading the model
+        """
         self.model = model
         self.ollama_url = "http://localhost:11434/api/generate"
         self.ocr_engine = ocr_engine.lower()
         self.use_preprocessing = use_preprocessing
+        self.crop_for_ocr = crop_for_ocr
+        self.crop_margin = int(max(0, crop_margin))
+
+        # Reuse HTTP connections
+        self.session = requests.Session()
         
         # Initialize OCR engines
         if self.ocr_engine == "easyocr":
-            self.easyocr_reader = easyocr.Reader(['en'])
+            lang_key = "en"  # extendable in future
+            if lang_key not in EnhancedBookMetadataExtractor._easyocr_reader_cache:
+                EnhancedBookMetadataExtractor._easyocr_reader_cache[lang_key] = easyocr.Reader(['en'])
+            self.easyocr_reader = EnhancedBookMetadataExtractor._easyocr_reader_cache[lang_key]
         
         # Load the enhanced prompt from file
         if prompt_file is None:
@@ -105,6 +129,91 @@ class EnhancedBookMetadataExtractor:
         
         with open(prompt_file, "r", encoding="utf-8") as f:
             self.prompt_template = f.read()
+
+        # Optionally warm the model so first inference is faster
+        if warm_model:
+            try:
+                self._warm_ollama_model()
+            except Exception as e:
+                print(f"Warning: model warm-up skipped due to error: {e}")
+
+    def _warm_ollama_model(self) -> None:
+        """Send a tiny request to prompt the Ollama server to load the model."""
+        payload = {
+            "model": self.model,
+            "prompt": "ping",
+            "stream": False
+        }
+        try:
+            resp = self.session.post(self.ollama_url, json=payload, timeout=10)
+            # Ignore content; just ensure request completes
+            if resp.status_code != 200:
+                raise RuntimeError(f"Warm-up status {resp.status_code}")
+            print("🔥 Model warm-up request sent")
+        except Exception as e:
+            # Surface as warning to not block processing
+            raise e
+
+    def _auto_crop_text_region(self, image_path: str, margin: int) -> Optional[str]:
+        """Detect and crop the dominant text region. Returns new image path or None if no crop.
+
+        Heuristic: threshold to text mask, close gaps, find largest contour, crop with margin.
+        """
+        img = cv2.imread(image_path)
+        if img is None:
+            return None
+        h, w = img.shape[:2]
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Enhance contrast
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
+        # Binary inverse so text is white
+        thr = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 35, 10)
+        # Morphologically close to connect letters into lines/blocks
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7,3))
+        closed = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # Remove small noise
+        kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel2, iterations=1)
+        # Find contours
+        contours, _ = cv2.findContours(opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+        # Choose largest reasonable contour by area
+        img_area = float(h * w)
+        best = None
+        best_area = 0
+        for c in contours:
+            x, y, cw, ch = cv2.boundingRect(c)
+            area = cw * ch
+            # Filter improbable regions
+            if area < 0.01 * img_area:
+                continue
+            aspect = cw / float(ch + 1e-6)
+            if 0.2 <= aspect <= 10.0:  # exclude extremely thin shapes
+                if area > best_area:
+                    best_area = area
+                    best = (x, y, cw, ch)
+        if best is None:
+            return None
+        x, y, cw, ch = best
+        # Expand with margin but keep within image
+        x0 = max(0, x - margin)
+        y0 = max(0, y - margin)
+        x1 = min(w, x + cw + margin)
+        y1 = min(h, y + ch + margin)
+        # If crop is almost full image, skip to avoid extra IO
+        crop_area = float((x1 - x0) * (y1 - y0))
+        if crop_area > 0.9 * img_area:
+            return None
+        cropped = img[y0:y1, x0:x1]
+        # Write to temp alongside source
+        temp_dir = os.path.join(os.path.dirname(image_path), "temp_preprocessed")
+        os.makedirs(temp_dir, exist_ok=True)
+        base = os.path.splitext(os.path.basename(image_path))[0]
+        out_path = os.path.join(temp_dir, f"{base}_cropped.png")
+        cv2.imwrite(out_path, cropped)
+        return out_path
     
     def encode_image(self, image_path: str) -> str:
         """Encode an image to base64."""
@@ -117,6 +226,7 @@ class EnhancedBookMetadataExtractor:
         
         # Apply preprocessing if enabled
         preprocessed_image_path = image_path
+        temp_files_to_cleanup: List[str] = []
         if self.use_preprocessing and PREPROCESSING_AVAILABLE:
             print(f"    📝 Applying image preprocessing...")
             # Create temporary preprocessed image
@@ -129,6 +239,7 @@ class EnhancedBookMetadataExtractor:
             try:
                 _, preprocessed_image_path, steps = preprocess_for_book_cover(image_path, preprocessed_image_path)
                 print(f"    ✓ Preprocessing completed. Steps applied: {', '.join(steps)}")
+                temp_files_to_cleanup.append(preprocessed_image_path)
             except Exception as e:
                 print(f"    ⚠️  Preprocessing failed for {image_path}: {e}")
                 preprocessed_image_path = image_path
@@ -136,17 +247,31 @@ class EnhancedBookMetadataExtractor:
             print(f"    ⚠️  Preprocessing requested but not available for {image_path}")
         else:
             print(f"    📷 Using original image (preprocessing disabled)")
+
+        # Optional: auto-crop likely text region for OCR to reduce noise
+        crop_image_path = preprocessed_image_path
+        if self.crop_for_ocr:
+            try:
+                cropped = self._auto_crop_text_region(preprocessed_image_path, self.crop_margin)
+                if cropped and os.path.exists(cropped):
+                    crop_image_path = cropped
+                    temp_files_to_cleanup.append(cropped)
+                    print(f"    ✂️  Auto-cropped image for OCR: {os.path.basename(cropped)}")
+                else:
+                    print(f"    ⚠️  Auto-cropping produced no improvement; using original for OCR")
+            except Exception as e:
+                print(f"    ⚠️  Auto-cropping failed: {e}")
         
         # Extract text using selected OCR engine
         text = ""
         print(f"    🤖 Running {self.ocr_engine.upper()} OCR...")
         try:
             if self.ocr_engine == "easyocr":
-                results = self.easyocr_reader.readtext(preprocessed_image_path)
+                results = self.easyocr_reader.readtext(crop_image_path)
                 text = " ".join([result[1] for result in results])
                 print(f"    ✓ EasyOCR found {len(results)} text regions")
             elif self.ocr_engine == "tesseract":
-                image = Image.open(preprocessed_image_path)
+                image = Image.open(crop_image_path)
                 text = pytesseract.image_to_string(image)
                 print(f"    ✓ Tesseract OCR completed")
             else:
@@ -181,16 +306,18 @@ class EnhancedBookMetadataExtractor:
             print(f"    ⚠️  No heuristic metadata extracted")
         
         # Clean up temporary files
-        if self.use_preprocessing and preprocessed_image_path != image_path:
-            try:
-                os.remove(preprocessed_image_path)
-                # Remove temp directory if empty
-                temp_dir = os.path.dirname(preprocessed_image_path)
+        try:
+            for tmp in temp_files_to_cleanup:
+                if tmp != image_path and os.path.exists(tmp):
+                    os.remove(tmp)
+            # Attempt to clean the temp directory if empty
+            if temp_files_to_cleanup:
+                temp_dir = os.path.dirname(temp_files_to_cleanup[0])
                 if os.path.exists(temp_dir) and not os.listdir(temp_dir):
                     os.rmdir(temp_dir)
-                print(f"    🧹 Cleaned up temporary preprocessed image")
-            except Exception:
-                pass  # Ignore cleanup errors
+                print(f"    🧹 Cleaned up temporary OCR artifacts")
+        except Exception:
+            pass  # Ignore cleanup errors
         
         return text, heuristic_metadata
     
@@ -310,7 +437,7 @@ class EnhancedBookMetadataExtractor:
         print(f"   • Heuristic context included: {'Yes' if combined_heuristic_metadata else 'No'}")
         
         # Send request to Ollama
-        response = requests.post(self.ollama_url, json=payload)
+        response = self.session.post(self.ollama_url, json=payload)
         
         if response.status_code != 200:
             print(f"❌ Ollama API error: {response.status_code}")
@@ -492,6 +619,9 @@ def main():
     parser.add_argument("--no-preprocessing", action="store_true", help="Disable image preprocessing")
     parser.add_argument("--ocr-indices", type=int, nargs="+", help="Indices of images to run OCR on (0-based, default: 1 2)")
     parser.add_argument("--show-raw", action="store_true", help="Show raw Ollama response")
+    parser.add_argument("--crop-ocr", action="store_true", help="Auto-crop text regions before OCR")
+    parser.add_argument("--crop-margin", type=int, default=16, help="Margin pixels around detected text when cropping (default: 16)")
+    parser.add_argument("--no-warm-model", action="store_true", help="Disable model warm-up on startup")
     
     args = parser.parse_args()
     
@@ -500,7 +630,10 @@ def main():
         model=args.model, 
         prompt_file=args.prompt_file,
         ocr_engine=args.ocr_engine,
-        use_preprocessing=not args.no_preprocessing
+        use_preprocessing=not args.no_preprocessing,
+        crop_for_ocr=args.crop_ocr,
+        crop_margin=args.crop_margin,
+        warm_model=not args.no_warm_model
     )
     
     try:

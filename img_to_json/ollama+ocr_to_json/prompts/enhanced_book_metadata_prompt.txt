@@ -37,10 +37,3 @@ OUTPUT (strict JSON):
 	"condition_keywords": ["string", "..."] | [],
 	"price": { "currency": "string | null", "amount": "float | null" }
 }
-
-RULES:
-- Use OCR on visible pages only (cover/title page/back/copyright).
-- Do not claim a dust jacket unless one is visible.
-- Do not fabricate binding, language, or page count—leave them null if not plainly visible.
-- When OCR context contradicts visual evidence, prioritize what you can clearly see in the images.
-- Use OCR context to enhance accuracy of publisher names, ISBNs, and other detailed text fields.
