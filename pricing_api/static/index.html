@@ -18,6 +18,11 @@
   <main>
     <section class="controls">
       <div class="row">
+        <label for="processed">Processed books</label>
+        <select id="processed"></select>
+        <button id="btnLoad">Load</button>
+      </div>
+      <div class="row">
         <label for="json">Input JSON (book metadata)</label>
         <textarea id="json" rows="12" placeholder='{"title":"The Hobbit","authors":["J. R. R. Tolkien"],"isbn_13":null,"isbn_10":null}'></textarea>
       </div>
@@ -30,7 +35,11 @@
       </div>
     </section>
     <section class="result">
-      <h2>Response</h2>
+      <h2>Request</h2>
+      <div id="reqTable"></div>
+      <h2>Best Offer</h2>
+      <div id="respTable"></div>
+      <h2>Raw Response</h2>
       <pre id="out"></pre>
     </section>
   </main>
