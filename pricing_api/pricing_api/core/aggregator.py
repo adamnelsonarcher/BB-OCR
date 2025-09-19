@@ -3,14 +3,14 @@ from typing import Optional, List, Dict, Tuple, Any
 
 from pricing_api.providers.google_books import GoogleBooksProvider
 from pricing_api.providers.amazon_stub import AmazonStubProvider
-from pricing_api.providers.abebooks_stub import AbeBooksStubProvider
+from pricing_api.providers.abebooks_html import AbeBooksHtmlProvider
 from pricing_api.providers.biblio_stub import BiblioStubProvider
 
 
 DEFAULT_PROVIDERS = [
     ("google_books", GoogleBooksProvider),
     ("amazon", AmazonStubProvider),
-    ("abebooks", AbeBooksStubProvider),
+    ("abebooks", AbeBooksHtmlProvider),
     ("biblio", BiblioStubProvider),
 ]
 
