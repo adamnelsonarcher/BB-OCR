@@ -16,22 +16,22 @@
   "categories": [
     "Fiction",
     "American Literature",
-    "Western Literature"
+    "Regional Fiction"
   ],
-  "description": null,
+  "description": "null",
   "condition_keywords": [
     "worn",
+    "aged",
     "used"
   ],
   "price": {
-    "currency": "null",
+    "currency": "USD",
     "amount": null
   },
   "_processing_info": {
     "ocr_engine": "easyocr",
     "preprocessing_used": true,
     "ocr_images_processed": 2,
-    "total_images": 3,
-    "heuristic_metadata_found": true
+    "total_images": 3
   }
 }
