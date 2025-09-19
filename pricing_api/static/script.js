@@ -52,7 +52,8 @@ btnLoad.addEventListener('click', async () => {
   if (!path) return;
   try {
     const data = await fetch(`/processed/load?path=${encodeURIComponent(path)}`).then(r => r.json());
-    jsonEl.value = JSON.stringify(data.payload, null, 2);
+    // Show the full raw JSON exactly as stored (including nulls/missing values)
+    jsonEl.value = JSON.stringify(data.raw, null, 2);
   } catch (e) {
     alert('Failed to load processed JSON');
   }
