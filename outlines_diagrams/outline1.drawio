@@ -1,0 +1,147 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/24.7.8 Chrome/128.0.6613.36 Electron/32.0.1 Safari/537.36" version="24.7.8">
+  <diagram name="Page-1" id="mNW4_Lwzxp9KIEH2PyLP">
+    <mxGraphModel dx="1434" dy="836" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="hpFnWFokEzfIbIHsU34V-9" value="&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;br style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;II. Accelerator / Local Processing Service" style="whiteSpace=wrap;html=1;rounded=1;verticalAlign=top;fontFamily=Times New Roman;fontSize=13;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="50" y="380" width="980" height="430" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-20" value="&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;br style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 13px;&quot;&gt;III. BookTrakker (Existing Logging System)&lt;/div&gt;" style="whiteSpace=wrap;html=1;rounded=1;verticalAlign=top;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="50" y="830" width="765" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-11" value="&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;br style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;IV. Data Persistence (Local)" style="whiteSpace=wrap;html=1;rounded=1;verticalAlign=top;fontFamily=Times New Roman;fontSize=13;fontStyle=1" parent="1" vertex="1">
+          <mxGeometry x="50" y="1030" width="765" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.75;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-10" target="hpFnWFokEzfIbIHsU34V-44" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-10" value="&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;br style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;V. External Data Sources (Cloud)" style="whiteSpace=wrap;html=1;rounded=1;verticalAlign=top;fontFamily=Times New Roman;fontSize=13;fontStyle=1;fillColor=#ffcc99;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="50" y="1220" width="765" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-2" value="&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;br style=&quot;font-size: 13px;&quot;&gt;&lt;/div&gt;&lt;div style=&quot;font-size: 13px;&quot;&gt;I. Input Layer (User)&lt;/div&gt;" style="whiteSpace=wrap;html=1;rounded=1;align=center;horizontal=1;verticalAlign=top;fontStyle=1;fontFamily=Times New Roman;fontSize=13;" parent="1" vertex="1">
+          <mxGeometry x="50" y="180" width="960" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-24" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;exitX=0.5;exitY=1;exitDx=0;exitDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-1" target="hpFnWFokEzfIbIHsU34V-4" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="320" y="370" />
+              <mxPoint x="130" y="370" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-1" value="2. Book Cover / Copyright Images" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#cce5ff;strokeColor=#36393d;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="260" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-25" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-4" target="hpFnWFokEzfIbIHsU34V-5" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-4" value="3. Image Preprocessing (OpenCV)" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#cce5ff;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="70" y="450" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-30" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-5" target="hpFnWFokEzfIbIHsU34V-6" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-5" value="4. Cleaned Image" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#cce5ff;strokeColor=#36393d;glass=0;shadow=0;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="70" y="550" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-31" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-6" target="hpFnWFokEzfIbIHsU34V-7" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-6" value="5. OCR Engine" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#cce5ff;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="260" y="430" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-32" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-7" target="hpFnWFokEzfIbIHsU34V-29" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-7" value="6. Text Structuring &amp;amp; Heuristics Engine&lt;div&gt;&lt;br&gt;&lt;div style=&quot;font-size: 13px;&quot;&gt;(Python Regex)&lt;/div&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#cce5ff;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="260" y="541.25" width="120" height="88.75" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-12" value="10. Local Book DB (PostgreSQL)" style="whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#ffcc99;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="582.5" y="1085" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-19" value="13. Verification UI" style="whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="530" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-21" target="hpFnWFokEzfIbIHsU34V-1" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-21" value="1. User" style="whiteSpace=wrap;html=1;fontFamily=Times New Roman;fontSize=13;labelBackgroundColor=none;fillColor=#cce5ff;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="80" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-49" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-29" target="hpFnWFokEzfIbIHsU34V-33" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-29" value="&lt;div style=&quot;font-size: 13px;&quot;&gt;&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;7. Structured JSON&lt;/font&gt;&lt;/div&gt;&lt;span style=&quot;font-family: &amp;quot;Courier New&amp;quot;; font-size: 13px;&quot;&gt;&lt;div&gt;&lt;span style=&quot;font-family: &amp;quot;Courier New&amp;quot;;&quot;&gt;&lt;br&gt;&lt;/span&gt;&lt;/div&gt;{title: &quot;...&quot;, author: &quot;...&quot;, year: &quot;...&quot;}&lt;/span&gt;" style="whiteSpace=wrap;html=1;fillColor=#cce5ff;strokeColor=#36393d;rounded=1;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="420" y="430" width="120" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-50" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-33" target="hpFnWFokEzfIbIHsU34V-34" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-33" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 13px;&quot;&gt;8. Search Ochestrator&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="612.5" y="445" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-41" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=1;exitY=1;exitDx=0;exitDy=0;entryX=0.674;entryY=0.028;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-34" target="hpFnWFokEzfIbIHsU34V-36" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="761" y="621" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-52" value="&lt;font size=&quot;1&quot; face=&quot;Times New Roman&quot; style=&quot;&quot;&gt;&lt;b style=&quot;font-size: 16px;&quot;&gt;NO&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="hpFnWFokEzfIbIHsU34V-41" vertex="1" connectable="0">
+          <mxGeometry x="0.0588" y="-3" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-34" value="&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; font-size: 13px;&quot;&gt;9. Book in Local Cache?&lt;/span&gt;" style="rhombus;whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="590" y="560" width="165" height="81.25" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-38" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;jumpStyle=arc;jumpSize=18;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-36" target="hpFnWFokEzfIbIHsU34V-10" edge="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="900" y="740" />
+              <mxPoint x="900" y="1310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-36" value="&lt;font style=&quot;font-size: 13px;&quot; face=&quot;Times New Roman&quot;&gt;11. Parallel API Query Module&lt;/font&gt;" style="whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="680" y="690" width="120" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-42" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;entryX=0.401;entryY=0.03;entryDx=0;entryDy=0;entryPerimeter=0;" parent="1" source="hpFnWFokEzfIbIHsU34V-34" target="hpFnWFokEzfIbIHsU34V-12" edge="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-51" value="&lt;font face=&quot;Times New Roman&quot; style=&quot;font-size: 15px;&quot;&gt;&lt;b style=&quot;&quot;&gt;YES&lt;/b&gt;&lt;/font&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="hpFnWFokEzfIbIHsU34V-42" vertex="1" connectable="0">
+          <mxGeometry x="-0.3707" y="2" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-54" value="&lt;b style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; font-size: 15px;&quot;&gt;(FAST LANE)&lt;/b&gt;" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" parent="hpFnWFokEzfIbIHsU34V-42" vertex="1" connectable="0">
+          <mxGeometry x="-0.2376" relative="1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-44" value="12. Consolidated Metadata" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffcc99;strokeColor=#36393d;" parent="1" vertex="1">
+          <mxGeometry x="880" y="660" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-45" value="BookTrakker CSV Import" style="whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="100" y="900" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-47" value="BookTrakker RPA Bot (PyAutoGUI)" style="whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="250" y="900" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-48" value="Label Printer" style="whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" parent="1" vertex="1">
+          <mxGeometry x="680" y="250" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-55" value="&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; font-size: 13px;&quot;&gt;Google Books API&lt;/span&gt;" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="60" y="1270" width="160" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-56" value="&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; font-size: 13px;&quot;&gt;AbeBooks.com&lt;/span&gt;" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="357.5" y="1270" width="150" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="hpFnWFokEzfIbIHsU34V-57" value="&lt;span style=&quot;font-family: &amp;quot;Times New Roman&amp;quot;; font-size: 13px;&quot;&gt;Open Library API&lt;/span&gt;" style="ellipse;shape=cloud;whiteSpace=wrap;html=1;" parent="1" vertex="1">
+          <mxGeometry x="210" y="1270" width="150" height="80" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
