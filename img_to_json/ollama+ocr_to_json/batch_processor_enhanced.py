@@ -26,7 +26,8 @@ class EnhancedBatchProcessor:
     
     def __init__(self, books_dir=None, output_dir="batch_output", model="gemma3:4b", 
                  ocr_engine="easyocr", use_preprocessing=True, ocr_indices=None, 
-                 max_workers=2, show_progress=True, crop_ocr=False, crop_margin=16, no_warm_model=False):
+                 max_workers=2, show_progress=True, crop_ocr=False, crop_margin=16, no_warm_model=False,
+                 edge_crop=0.0):
         """Initialize the batch processor."""
         self.books_dir = books_dir
         self.output_dir = output_dir
@@ -39,6 +40,7 @@ class EnhancedBatchProcessor:
         self.crop_ocr = crop_ocr
         self.crop_margin = crop_margin
         self.no_warm_model = no_warm_model
+        self.edge_crop = float(edge_crop)
         
         # Statistics
         self.stats = {
@@ -120,7 +122,8 @@ class EnhancedBatchProcessor:
                 books_dir=self.books_dir,
                 crop_ocr=self.crop_ocr,
                 crop_margin=self.crop_margin,
-                no_warm_model=self.no_warm_model
+                no_warm_model=self.no_warm_model,
+                edge_crop=self.edge_crop
             )
             
             result['success'] = success
@@ -176,6 +179,7 @@ class EnhancedBatchProcessor:
         print(f"Preprocessing: {'enabled' if self.use_preprocessing else 'disabled'}")
         print(f"Max workers: {self.max_workers}")
         print(f"OCR crop: {'enabled' if self.crop_ocr else 'disabled'} (margin: {self.crop_margin})")
+        print(f"Edge crop: {self.edge_crop}%")
         if self.ocr_indices:
             print(f"OCR indices: {self.ocr_indices}")
         print("-" * 60)
@@ -194,7 +198,8 @@ class EnhancedBatchProcessor:
                 use_preprocessing=self.use_preprocessing,
                 crop_for_ocr=self.crop_ocr,
                 crop_margin=self.crop_margin,
-                warm_model=not self.no_warm_model
+                warm_model=not self.no_warm_model,
+                edge_crop_percent=self.edge_crop
             )
             
             for book_id in book_ids:
@@ -213,7 +218,8 @@ class EnhancedBatchProcessor:
                         crop_ocr=self.crop_ocr,
                         crop_margin=self.crop_margin,
                         no_warm_model=self.no_warm_model,
-                        extractor=reused_extractor
+                        extractor=reused_extractor,
+                        edge_crop=self.edge_crop
                     )
                     output_file = os.path.join(self.output_dir, f"book_{book_id}_enhanced.json")
                     validation_passed = False
@@ -396,6 +402,8 @@ def main():
                         help="Margin pixels around detected text when cropping (default: 16)")
     parser.add_argument("--no-warm-model", action="store_true",
                         help="Disable model warm-up on startup")
+    parser.add_argument("--edge-crop", type=float, default=0.0,
+                        help="Centered edge crop percent [0-45] applied before OCR")
     
     args = parser.parse_args()
     
@@ -430,7 +438,8 @@ def main():
             show_progress=not args.no_progress,
             crop_ocr=args.crop_ocr,
             crop_margin=args.crop_margin,
-            no_warm_model=args.no_warm_model
+            no_warm_model=args.no_warm_model,
+            edge_crop=args.edge_crop
         )
         
         # Process the books

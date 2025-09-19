@@ -14,7 +14,7 @@ section.block { padding: 20px; margin: 0; border: 1px solid #1f2730; background:
 .video-panel { display:flex; gap: 24px; align-items:flex-start; }
 .video-wrap { position: relative; }
 .video-panel video { width: 640px; max-width: 100%; height:auto; background:#000; border:1px solid #223042; display:block; }
-.overlay-box { position:absolute; top:10%; left:10%; right:10%; bottom:10%; border:2px dashed #7dd3fc; box-shadow: inset 0 0 0 9999px rgba(0,0,0,0.08); pointer-events:none; }
+.overlay-box { position:absolute; border:2px dashed #7dd3fc; box-shadow: inset 0 0 0 9999px rgba(0,0,0,0.08); pointer-events:none; }
 .hidden { display:none; }
 .status { color:#a7f3d0; margin-bottom:8px; }
 .error { color:#fca5a5; }

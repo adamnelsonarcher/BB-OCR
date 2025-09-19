@@ -90,7 +90,8 @@ class EnhancedBookMetadataExtractor:
     _easyocr_reader_cache: Dict[str, easyocr.Reader] = {}
 
     def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
-                 crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True):
+                 crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True,
+                 edge_crop_percent: float = 0.0):
         """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
 
         Args:
@@ -101,6 +102,7 @@ class EnhancedBookMetadataExtractor:
             crop_for_ocr: Auto-crop text regions before OCR to reduce noise
             crop_margin: Margin (in pixels) to add around detected text region when cropping
             warm_model: Send a tiny request on init to keep/loading the model
+            edge_crop_percent: Percentage [0-45] to crop from each edge (centered crop) for OCR
         """
         self.model = model
         self.ollama_url = "http://localhost:11434/api/generate"
@@ -108,6 +110,7 @@ class EnhancedBookMetadataExtractor:
         self.use_preprocessing = use_preprocessing
         self.crop_for_ocr = crop_for_ocr
         self.crop_margin = int(max(0, crop_margin))
+        self.edge_crop_percent = float(max(0.0, min(45.0, edge_crop_percent)))
 
         # Reuse HTTP connections
         self.session = requests.Session()
@@ -214,6 +217,32 @@ class EnhancedBookMetadataExtractor:
         out_path = os.path.join(temp_dir, f"{base}_cropped.png")
         cv2.imwrite(out_path, cropped)
         return out_path
+
+    def _central_edge_crop(self, image_path: str, percent: float) -> Optional[str]:
+        """Crop a centered rectangle by removing `percent` from each edge. Returns new path or None."""
+        if percent <= 0.0:
+            return None
+        img = cv2.imread(image_path)
+        if img is None:
+            return None
+        h, w = img.shape[:2]
+        # Compute pixel margins
+        mx = int(round(w * (percent / 100.0)))
+        my = int(round(h * (percent / 100.0)))
+        # Ensure valid crop area
+        x0 = max(0, mx)
+        y0 = max(0, my)
+        x1 = min(w, w - mx)
+        y1 = min(h, h - my)
+        if x1 - x0 < max(16, w * 0.2) or y1 - y0 < max(16, h * 0.2):
+            return None
+        cropped = img[y0:y1, x0:x1]
+        temp_dir = os.path.join(os.path.dirname(image_path), "temp_preprocessed")
+        os.makedirs(temp_dir, exist_ok=True)
+        base = os.path.splitext(os.path.basename(image_path))[0]
+        out_path = os.path.join(temp_dir, f"{base}_edgecrop_{int(percent)}.png")
+        cv2.imwrite(out_path, cropped)
+        return out_path
     
     def encode_image(self, image_path: str) -> str:
         """Encode an image to base64."""
@@ -248,9 +277,20 @@ class EnhancedBookMetadataExtractor:
         else:
             print(f"    📷 Using original image (preprocessing disabled)")
 
-        # Optional: auto-crop likely text region for OCR to reduce noise
+        # Optional: either central edge crop (simple) or auto text region crop
         crop_image_path = preprocessed_image_path
-        if self.crop_for_ocr:
+        # Apply simple centered edge crop first if configured
+        if self.edge_crop_percent > 0.0:
+            try:
+                central = self._central_edge_crop(preprocessed_image_path, self.edge_crop_percent)
+                if central and os.path.exists(central):
+                    crop_image_path = central
+                    temp_files_to_cleanup.append(central)
+                    print(f"    ✂️  Edge-cropped image for OCR: {os.path.basename(central)} ({self.edge_crop_percent:.1f}%)")
+            except Exception as e:
+                print(f"    ⚠️  Edge-cropping failed: {e}")
+        # If no edge crop or still using original, optionally try auto-crop of text region
+        if self.crop_for_ocr and crop_image_path == preprocessed_image_path:
             try:
                 cropped = self._auto_crop_text_region(preprocessed_image_path, self.crop_margin)
                 if cropped and os.path.exists(cropped):
@@ -621,6 +661,7 @@ def main():
     parser.add_argument("--show-raw", action="store_true", help="Show raw Ollama response")
     parser.add_argument("--crop-ocr", action="store_true", help="Auto-crop text regions before OCR")
     parser.add_argument("--crop-margin", type=int, default=16, help="Margin pixels around detected text when cropping (default: 16)")
+    parser.add_argument("--edge-crop", type=float, default=0.0, help="Centered edge crop percent [0-45] applied before OCR")
     parser.add_argument("--no-warm-model", action="store_true", help="Disable model warm-up on startup")
     
     args = parser.parse_args()
@@ -633,7 +674,8 @@ def main():
         use_preprocessing=not args.no_preprocessing,
         crop_for_ocr=args.crop_ocr,
         crop_margin=args.crop_margin,
-        warm_model=not args.no_warm_model
+        warm_model=not args.no_warm_model,
+        edge_crop_percent=args.edge_crop
     )
     
     try:

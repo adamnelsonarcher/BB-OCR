@@ -94,22 +94,26 @@ async def list_models():
 		]}
 
 
-def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool) -> "EnhancedBookMetadataExtractor":
+def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, edge_crop: float = 0.0, auto_crop: bool = False) -> "EnhancedBookMetadataExtractor":
 	if EnhancedBookMetadataExtractor is None:
 		raise RuntimeError(f"Failed to import pipeline: {IMPORT_ERROR}")
 	try:
-		return EnhancedBookMetadataExtractor(
+        return EnhancedBookMetadataExtractor(
 			model=model,
 			ocr_engine=ocr_engine,
-			use_preprocessing=use_preprocessing,
+            use_preprocessing=use_preprocessing,
+            edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
+            crop_for_ocr=bool(auto_crop)
 		)
 	except Exception as e:
 		# Fallback to tesseract if easyocr fails to init
 		if ocr_engine.lower() == "easyocr":
-			return EnhancedBookMetadataExtractor(
+            return EnhancedBookMetadataExtractor(
 				model=model,
 				ocr_engine="tesseract",
-				use_preprocessing=use_preprocessing,
+                use_preprocessing=use_preprocessing,
+                edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
+                crop_for_ocr=bool(auto_crop)
 			)
 		raise
 
@@ -151,10 +155,12 @@ def _compute_default_ocr_indices(n: int) -> List[int]:
 
 @app.post("/api/process_image")
 async def process_image(
-	image: UploadFile = File(...),
-	model: str = Form("gemma3:4b"),
-	ocr_engine: str = Form("easyocr"),
-	use_preprocessing: bool = Form(True),
+    image: UploadFile = File(...),
+    model: str = Form("gemma3:4b"),
+    ocr_engine: str = Form("easyocr"),
+    use_preprocessing: bool = Form(True),
+    edge_crop: float = Form(0.0),
+    crop_ocr: bool = Form(False),
 ):
 	if image.content_type is None or not image.content_type.startswith("image/"):
 		raise HTTPException(status_code=400, detail="Uploaded file must be an image")
@@ -169,7 +175,7 @@ async def process_image(
 
 	# Run pipeline on the single image, ensure OCR on that image
 	try:
-		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing)
+        extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
 		metadata = extractor.extract_metadata_from_images([saved_path], ocr_image_indices=[0])
 	except Exception as e:
 		return JSONResponse(status_code=500, content={
@@ -186,10 +192,12 @@ async def process_image(
 
 @app.post("/api/process_images")
 async def process_images(
-	images: List[UploadFile] = File(...),
-	model: str = Form("gemma3:4b"),
-	ocr_engine: str = Form("easyocr"),
-	use_preprocessing: bool = Form(True),
+    images: List[UploadFile] = File(...),
+    model: str = Form("gemma3:4b"),
+    ocr_engine: str = Form("easyocr"),
+    use_preprocessing: bool = Form(True),
+    edge_crop: float = Form(0.0),
+    crop_ocr: bool = Form(False),
 ):
 	if not images:
 		raise HTTPException(status_code=400, detail="No images uploaded")
@@ -206,7 +214,7 @@ async def process_images(
 		saved_paths.append(path)
 
 	try:
-		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing)
+        extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
 		ocr_indices = _compute_default_ocr_indices(len(saved_paths))
 		metadata = extractor.extract_metadata_from_images(saved_paths, ocr_image_indices=ocr_indices)
 	except Exception as e:

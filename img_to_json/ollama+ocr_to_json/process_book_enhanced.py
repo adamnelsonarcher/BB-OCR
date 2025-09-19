@@ -87,7 +87,8 @@ def validate_metadata(metadata):
 
 def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_engine="easyocr", 
                          use_preprocessing=True, ocr_indices=None, show_raw=True, books_dir=None,
-                         crop_ocr=False, crop_margin=16, no_warm_model=False, extractor: EnhancedBookMetadataExtractor = None):
+                         crop_ocr=False, crop_margin=16, no_warm_model=False, extractor: EnhancedBookMetadataExtractor = None,
+                         edge_crop=0.0):
     """Process a single book by ID using the enhanced pipeline."""
     
     # Determine the book directory path
@@ -149,7 +150,8 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
                 use_preprocessing=use_preprocessing,
                 crop_for_ocr=crop_ocr,
                 crop_margin=crop_margin,
-                warm_model=not no_warm_model
+                warm_model=not no_warm_model,
+                edge_crop_percent=edge_crop
             )
         
         # Process the book directory
@@ -258,6 +260,8 @@ def main():
                         help="Disable model warm-up on startup")
     parser.add_argument("--books-dir", type=str,
                         help="Path to books directory (auto-detected if not specified)")
+    parser.add_argument("--edge-crop", type=float, default=0.0,
+                        help="Centered edge crop percent [0-45] applied before OCR")
     
     args = parser.parse_args()
     
@@ -290,7 +294,9 @@ def main():
         args.books_dir,
         args.crop_ocr,
         args.crop_margin,
-        args.no_warm_model
+        args.no_warm_model,
+        None,
+        args.edge_crop
     )
     sys.exit(0 if success else 1)
 

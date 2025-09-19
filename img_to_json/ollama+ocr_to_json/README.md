@@ -104,6 +104,12 @@ python process_book_enhanced.py 5 --ocr-indices 0 2
 
 # Custom output directory
 python process_book_enhanced.py 7 --output-dir my_results
+
+# Apply centered edge crop of 12% on all sides (simple and fast)
+python process_book_enhanced.py 5 --edge-crop 12
+
+# Combine centered edge crop with auto text-region cropping
+python process_book_enhanced.py 5 --edge-crop 10 --crop-ocr --crop-margin 16
 ```
 
 **Command Line Options:**
@@ -136,6 +142,9 @@ python batch_processor_enhanced.py --max-workers 4
 
 # Custom configuration
 python batch_processor_enhanced.py --model llama3.2-vision --ocr-engine tesseract --output-dir batch_results
+
+# Batch with edge crop and no model warm-up
+python batch_processor_enhanced.py --edge-crop 10 --no-warm-model
 ```
 
 **Batch Command Line Options:**
@@ -212,6 +221,12 @@ The pipeline applies several preprocessing steps to improve OCR accuracy:
 6. **Gentle sharpening**
 
 Disable with `--no-preprocessing` if your images are already optimized.
+
+### Cropping Options
+
+- `--edge-crop <0-45>`: Crops a centered rectangle by removing the percentage from each edge. Good for trimming borders/background so OCR sees mostly text.
+- `--crop-ocr`: Enables heuristic auto-cropping to the dominant text block. Use with `--crop-margin` to control padding.
+- You can combine both; edge-crop runs first, then auto-crop runs only if still beneficial.
 
 ## Output Format
 

@@ -19,6 +19,10 @@ const preprocChk = document.getElementById('preproc');
 const examplesSel = document.getElementById('examples');
 const btnRunExample = document.getElementById('run-example');
 const btnLoadExampleOutput = document.getElementById('load-example-output');
+const edgeCropRange = document.getElementById('edge-crop');
+const edgeCropVal = document.getElementById('edge-crop-val');
+const autoCropChk = document.getElementById('auto-crop');
+const overlayBox = document.querySelector('.overlay-box');
 
 let lastId = null;
 let captureQueue = []; // Array of Blobs
@@ -66,6 +70,19 @@ async function init() {
 		}
 	} catch {}
 }
+function updateOverlay() {
+  const pct = Number(edgeCropRange.value || 0);
+  // Set overlay insets as percents so it scales with video
+  overlayBox.style.top = pct + '%';
+  overlayBox.style.left = pct + '%';
+  overlayBox.style.right = pct + '%';
+  overlayBox.style.bottom = pct + '%';
+  edgeCropVal.textContent = pct + '%';
+}
+
+edgeCropRange.addEventListener('input', updateOverlay);
+updateOverlay();
+
 
 function drawFrameToBlob(mime = 'image/jpeg', quality = 0.92) {
 	const w = video.videoWidth || 1280;
@@ -128,6 +145,9 @@ async function processSingle(blob, filename = 'capture.jpg') {
 	fd.append('model', modelSel.value || 'gemma3:4b');
 	fd.append('ocr_engine', ocrSel.value || 'easyocr');
 	fd.append('use_preprocessing', preprocChk.checked ? 'true' : 'false');
+  // Pass cropping preferences
+  fd.append('edge_crop', String(Number(edgeCropRange.value || 0)));
+  fd.append('crop_ocr', autoCropChk.checked ? 'true' : 'false');
 
 	const resp = await fetch('/api/process_image', { method: 'POST', body: fd });
 	const data = await resp.json();
@@ -157,6 +177,8 @@ async function processBatch(blobs) {
 	fd.append('model', modelSel.value || 'gemma3:4b');
 	fd.append('ocr_engine', ocrSel.value || 'easyocr');
 	fd.append('use_preprocessing', preprocChk.checked ? 'true' : 'false');
+  fd.append('edge_crop', String(Number(edgeCropRange.value || 0)));
+  fd.append('crop_ocr', autoCropChk.checked ? 'true' : 'false');
 
 	const resp = await fetch('/api/process_images', { method: 'POST', body: fd });
 	const data = await resp.json();
