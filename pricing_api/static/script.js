@@ -7,6 +7,7 @@ const processedSel = document.getElementById('processed');
 const btnLoad = document.getElementById('btnLoad');
 const reqTable = document.getElementById('reqTable');
 const respTable = document.getElementById('respTable');
+const mergeTable = document.getElementById('mergeTable');
 
 async function init() {
   try {
@@ -122,6 +123,44 @@ btnRun.addEventListener('click', async () => {
     }
     if (!best) best = offers[0] || null;
     respTable.innerHTML = best ? toTable(best) : '<div class="muted">No offers</div>';
+
+    // Build merged view: start with original input fields (ensure keys exist), then fill missing from best
+    const src = data.query || payload || {};
+    // Start merged as a deep-ish copy of the original full JSON (not only request fields)
+    // We use the current textarea value as the authoritative source so it includes all fields.
+    let merged;
+    try { merged = JSON.parse(jsonEl.value || '{}'); } catch { merged = { ...src }; }
+    if (merged && typeof merged !== 'object') merged = { ...src };
+    // Ensure commonly expected keys exist even if not present
+    const ensureKeys = [
+      'title','subtitle','authors','publisher','publication_date','isbn_13','isbn_10',
+      'asin','edition','binding_type','language','page_count','categories','description','condition_keywords','price'
+    ];
+    for (const k of ensureKeys) if (!(k in merged)) merged[k] = null;
+    if (merged.price === null || typeof merged.price !== 'object') merged.price = { currency: null, amount: null };
+    if (!Array.isArray(merged.authors) && merged.authors !== null) merged.authors = [String(merged.authors)];
+    if (!Array.isArray(merged.categories) && merged.categories !== null) merged.categories = [String(merged.categories)];
+    if (!Array.isArray(merged.condition_keywords) && merged.condition_keywords !== null) merged.condition_keywords = [String(merged.condition_keywords)];
+    // add traceability fields
+    merged.info_url = merged.info_url ?? null;
+    merged.source_provider = merged.source_provider ?? null;
+    if (best) {
+      const pick = (a, b) => (a === null || a === undefined || (Array.isArray(a) && !a.length) || (typeof a === 'string' && !a.trim())) ? b : a;
+      merged.title = pick(merged.title, best.title ?? null);
+      merged.subtitle = pick(merged.subtitle, best.subtitle ?? null);
+      merged.authors = pick(merged.authors, Array.isArray(best.authors) ? best.authors : null);
+      merged.publisher = pick(merged.publisher, best.publisher ?? null);
+      merged.publication_date = pick(merged.publication_date, best.publication_date ?? null);
+      merged.isbn_13 = pick(merged.isbn_13, best.isbn_13 ?? null);
+      merged.isbn_10 = pick(merged.isbn_10, best.isbn_10 ?? null);
+      merged.description = pick(merged.description, best.description ?? null);
+      merged.page_count = pick(merged.page_count, best.page_count ?? null);
+      merged.categories = pick(merged.categories, Array.isArray(best.categories) ? best.categories : null);
+      merged.language = pick(merged.language, best.language ?? null);
+      merged.info_url = best.url ?? null;
+      merged.source_provider = best.provider ?? null;
+    }
+    mergeTable.innerHTML = toTable(merged);
   } catch (e) {
     outEl.textContent = String(e);
   }
