@@ -166,7 +166,7 @@ def process_book_enhanced(book_id, output_dir="output", model="gemma3:4b", ocr_e
             print(f"🔧 Preprocessing Used: {'✅' if processing_info.get('preprocessing_used') else '❌'}")
             print(f"📄 OCR Images Processed: {processing_info.get('ocr_images_processed', 0)}")
             print(f"📸 Total Images: {processing_info.get('total_images', 0)}")
-            print(f"📊 Heuristic Metadata Found: {'✅' if processing_info.get('heuristic_metadata_found') else '❌'}")
+            # Heuristic metadata removed; keep summary concise
             if processing_info.get('fallback_used'):
                 print(f"⚠️  Fallback Used: ✅")
                 print(f"❌ Ollama Error: {processing_info.get('ollama_error', 'N/A')}")

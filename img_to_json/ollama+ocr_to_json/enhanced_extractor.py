@@ -26,10 +26,9 @@ parent_dir = os.path.dirname(os.path.abspath(__file__))
 ocr_testing_dir = os.path.join(os.path.dirname(parent_dir), "ocr_testing")
 sys.path.append(ocr_testing_dir)
 
-# Import preprocessing and heuristic extraction modules
+# Import preprocessing module
 try:
     from preprocessing.image_preprocessor import preprocess_for_book_cover
-    from hueristics.book_extractor import extract_book_metadata_from_text
     PREPROCESSING_AVAILABLE = True
 except ImportError as e:
     print(f"Warning: Could not import OCR testing modules: {e}")
@@ -40,10 +39,6 @@ except ImportError as e:
     def preprocess_for_book_cover(image_path, output_path=None):
         """Fallback function when preprocessing is not available."""
         return image_path, output_path, ["original"]
-    
-    def extract_book_metadata_from_text(text):
-        """Fallback function when heuristic extraction is not available."""
-        return {}
 
 # Define the JSON schema for validation
 METADATA_SCHEMA = {
@@ -249,8 +244,8 @@ class EnhancedBookMetadataExtractor:
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
     
-    def extract_text_with_ocr(self, image_path: str) -> Tuple[str, Dict[str, Any]]:
-        """Extract text from an image using OCR and return both text and heuristic metadata."""
+    def extract_text_with_ocr(self, image_path: str) -> str:
+        """Extract text from an image using OCR and return text only."""
         print(f"    🔍 Starting OCR processing for: {os.path.basename(image_path)}")
         
         # Apply preprocessing if enabled
@@ -324,26 +319,13 @@ class EnhancedBookMetadataExtractor:
         if text.strip():
             print(f"    📄 OCR Text Extracted ({len(text)} characters):")
             print(f"    " + "="*60)
-            # Show first 500 characters of OCR text, with line breaks preserved
             display_text = text[:500] + "..." if len(text) > 500 else text
             for line in display_text.split('\n'):
-                if line.strip():  # Only show non-empty lines
+                if line.strip():
                     print(f"    | {line.strip()}")
             print(f"    " + "="*60)
         else:
             print(f"    ⚠️  No text extracted from OCR")
-        
-        # Extract heuristic metadata from the OCR text
-        print(f"    🔍 Extracting heuristic metadata from OCR text...")
-        heuristic_metadata = extract_book_metadata_from_text(text) if text else {}
-        
-        if heuristic_metadata:
-            print(f"    📊 Heuristic metadata found:")
-            for key, value in heuristic_metadata.items():
-                if value:
-                    print(f"    | {key}: {value}")
-        else:
-            print(f"    ⚠️  No heuristic metadata extracted")
         
         # Clean up temporary files
         try:
@@ -359,10 +341,10 @@ class EnhancedBookMetadataExtractor:
         except Exception:
             pass  # Ignore cleanup errors
         
-        return text, heuristic_metadata
+        return text
     
-    def create_enhanced_prompt(self, ocr_texts: List[str], heuristic_metadata: Dict[str, Any]) -> str:
-        """Create an enhanced prompt that includes OCR context."""
+    def create_enhanced_prompt(self, ocr_texts: List[str]) -> str:
+        """Create an enhanced prompt that includes OCR context only."""
         print(f"📝 Building enhanced prompt with OCR context...")
         
         ocr_context = ""
@@ -376,18 +358,7 @@ class EnhancedBookMetadataExtractor:
         else:
             print(f"⚠️  No OCR text available for context")
         
-        heuristic_context = ""
-        if heuristic_metadata:
-            print(f"📊 Adding heuristic metadata context:")
-            for key, value in heuristic_metadata.items():
-                if value:
-                    print(f"   ✓ {key}: {value}")
-            heuristic_context = f"\n\nHEURISTIC METADATA EXTRACTED FROM OCR:\n{json.dumps(heuristic_metadata, indent=2)}\n"
-            heuristic_context += "\nUse this heuristic data as additional context, but prioritize what you can directly see in the images. The OCR may contain errors."
-        else:
-            print(f"⚠️  No heuristic metadata available for context")
-        
-        enhanced_prompt = self.prompt_template + ocr_context + heuristic_context
+        enhanced_prompt = self.prompt_template + ocr_context
         
         print(f"✅ Enhanced prompt created ({len(enhanced_prompt)} characters total)")
         print(f"📄 ENHANCED PROMPT PREVIEW:")
@@ -415,7 +386,7 @@ class EnhancedBookMetadataExtractor:
         
         # Extract OCR text from specified images
         ocr_texts = []
-        combined_heuristic_metadata = {}
+        
         
         print(f"\n🔍 OCR PROCESSING PHASE")
         print(f"=" * 50)
@@ -425,15 +396,10 @@ class EnhancedBookMetadataExtractor:
         for idx in ocr_image_indices:
             if 0 <= idx < len(image_paths):
                 print(f"\n📖 Processing OCR for image {idx + 1}: {os.path.basename(image_paths[idx])}")
-                ocr_text, heuristic_meta = self.extract_text_with_ocr(image_paths[idx])
+                ocr_text = self.extract_text_with_ocr(image_paths[idx])
                 if ocr_text.strip():
                     ocr_texts.append(ocr_text)
                     print(f"    ✅ OCR text added to context")
-                    # Merge heuristic metadata, preferring non-null values
-                    for key, value in heuristic_meta.items():
-                        if value and (key not in combined_heuristic_metadata or not combined_heuristic_metadata[key]):
-                            combined_heuristic_metadata[key] = value
-                            print(f"    📊 Merged heuristic: {key} = {value}")
                 else:
                     print(f"    ⚠️  No usable OCR text from this image")
             else:
@@ -441,16 +407,11 @@ class EnhancedBookMetadataExtractor:
         
         print(f"\n📊 OCR PROCESSING SUMMARY:")
         print(f"   • OCR texts collected: {len(ocr_texts)}")
-        print(f"   • Heuristic metadata fields: {len([k for k, v in combined_heuristic_metadata.items() if v])}")
-        if combined_heuristic_metadata:
-            for key, value in combined_heuristic_metadata.items():
-                if value:
-                    print(f"   • {key}: {value}")
         
         # Create enhanced prompt with OCR context
         print(f"\n🤖 OLLAMA PROCESSING PHASE")
         print(f"=" * 50)
-        enhanced_prompt = self.create_enhanced_prompt(ocr_texts, combined_heuristic_metadata)
+        enhanced_prompt = self.create_enhanced_prompt(ocr_texts)
         
         # Encode all images for Ollama
         print(f"\n📸 Encoding {len(image_paths)} images for vision model...")
@@ -474,7 +435,7 @@ class EnhancedBookMetadataExtractor:
         print(f"   • Images: {len(images)}")
         print(f"   • Prompt length: {len(enhanced_prompt)} characters")
         print(f"   • OCR context included: {'Yes' if ocr_texts else 'No'}")
-        print(f"   • Heuristic context included: {'Yes' if combined_heuristic_metadata else 'No'}")
+        
         
         # Send request to Ollama
         response = self.session.post(self.ollama_url, json=payload)
@@ -540,8 +501,7 @@ class EnhancedBookMetadataExtractor:
                 "ocr_engine": self.ocr_engine,
                 "preprocessing_used": self.use_preprocessing,
                 "ocr_images_processed": len(ocr_texts),
-                "total_images": len(image_paths),
-                "heuristic_metadata_found": bool(combined_heuristic_metadata)
+                "total_images": len(image_paths)
             }
             
             print(f"\n✅ EXTRACTION SUCCESSFUL!")
@@ -562,13 +522,13 @@ class EnhancedBookMetadataExtractor:
             print(f"🔄 FALLING BACK TO HEURISTIC METADATA...")
             
             fallback_metadata = {
-                "title": combined_heuristic_metadata.get("title"),
+                "title": None,
                 "subtitle": None,
-                "authors": [combined_heuristic_metadata.get("author")] if combined_heuristic_metadata.get("author") else [],
-                "publisher": combined_heuristic_metadata.get("publisher"),
-                "publication_date": combined_heuristic_metadata.get("year"),
+                "authors": [],
+                "publisher": None,
+                "publication_date": None,
                 "isbn_10": None,
-                "isbn_13": combined_heuristic_metadata.get("isbn") if combined_heuristic_metadata.get("isbn") and len(combined_heuristic_metadata.get("isbn", "").replace("-", "")) == 13 else None,
+                "isbn_13": None,
                 "asin": None,
                 "edition": None,
                 "binding_type": None,
@@ -579,14 +539,13 @@ class EnhancedBookMetadataExtractor:
                 "condition_keywords": [],
                 "price": {
                     "currency": None,
-                    "amount": float(combined_heuristic_metadata.get("price", 0)) if combined_heuristic_metadata.get("price") else None
+                    "amount": None
                 },
                 "_processing_info": {
                     "ocr_engine": self.ocr_engine,
                     "preprocessing_used": self.use_preprocessing,
                     "ocr_images_processed": len(ocr_texts),
                     "total_images": len(image_paths),
-                    "heuristic_metadata_found": bool(combined_heuristic_metadata),
                     "fallback_used": True,
                     "ollama_error": str(e)
                 }
@@ -597,7 +556,7 @@ class EnhancedBookMetadataExtractor:
             print(f"   • Authors: {', '.join(fallback_metadata.get('authors', [])) or 'N/A'}")
             print(f"   • Publisher: {fallback_metadata.get('publisher', 'N/A')}")
             print(f"   • Publication Date: {fallback_metadata.get('publication_date', 'N/A')}")
-            print(f"   ⚠️  Using heuristic fallback due to Ollama parsing failure")
+            print(f"   ⚠️  Using minimal fallback due to Ollama parsing failure")
             
             return fallback_metadata
             
