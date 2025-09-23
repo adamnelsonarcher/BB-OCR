@@ -51,13 +51,20 @@
                 <div id="meta-table"></div>
                 <details id="trace" class="trace" open>
                     <summary>Processing Trace</summary>
+                    <h3>Live Output</h3>
+                    <table id="trace-table" class="trace-table">
+                        <thead>
+                            <tr>
+                                <th>Input image</th>
+                                <th>Processed image</th>
+                                <th>OCR output</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
                     <div class="trace-grid">
                         <div>
-                            <h3>Images</h3>
-                            <div id="trace-images" class="hscroll"></div>
-                        </div>
-                        <div>
-                            <h3>OCR Text</h3>
+                            <h3>OCR Text (all)</h3>
                             <pre id="trace-ocr-text" class="scroll hscroll"></pre>
                             <h3>OCR JSON (heuristic)</h3>
                             <pre id="trace-ocr-json" class="scroll hscroll"></pre>

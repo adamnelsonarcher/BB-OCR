@@ -40,6 +40,13 @@ details.trace { margin-top: 14px; }
 .thumb-label { font-size: 12px; color:#7dd3fc; }
 .ocr-col { flex: 1; }
 .ocr-box { max-height: 180px; overflow:auto; border:1px solid #223042; background:#0b0f14; padding:8px; white-space: pre; }
+.trace-table { width:100%; border-collapse: collapse; table-layout: fixed; margin: 6px 0 10px 0; }
+.trace-table th, .trace-table td { border:1px solid #223042; vertical-align: top; padding:8px; }
+.trace-table th { background:#11161c; color:#9fb3c8; }
+.trace-table td:nth-child(1), .trace-table td:nth-child(2) { width: 30%; }
+.trace-table td:nth-child(3) { width: 40%; }
+.trace-thumb { max-width: 240px; border:1px solid #223042; display:block; }
+.trace-ocr { max-height: 200px; overflow:auto; white-space: pre; }
 .scroll { max-height: 260px; overflow:auto; border:1px solid #223042; background:#0b0f14; padding:10px; }
 .hscroll { overflow-x: auto; white-space: pre; }
 

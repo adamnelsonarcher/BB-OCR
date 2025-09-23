@@ -9,7 +9,7 @@ const errorEl = document.getElementById('error');
 const metaTable = document.getElementById('meta-table');
 const actions = document.getElementById('actions');
 const traceEl = document.getElementById('trace');
-const traceImagesEl = document.getElementById('trace-images');
+const traceTable = document.getElementById('trace-table');
 const traceOcrTextEl = document.getElementById('trace-ocr-text');
 const traceOcrJsonEl = document.getElementById('trace-ocr-json');
 const tracePromptEl = document.getElementById('trace-prompt');
@@ -127,44 +127,34 @@ function renderTrace(metadata) {
     traceJsonEl.textContent = '';
     return;
   }
-  // images with before/after + OCR text per row
-  traceImagesEl.innerHTML = '';
+  // live table rows (input, processed, ocr)
+  const tbody = traceTable ? traceTable.querySelector('tbody') : null;
+  if (tbody) tbody.innerHTML = '';
   const images = Array.isArray(t.images) ? t.images : [];
-  images.forEach((img, idx) => {
-    const row = document.createElement('div');
-    row.className = 'thumb-row';
-    const title = document.createElement('div');
-    title.textContent = `Image ${idx+1}`;
-    title.style.color = '#9fb3c8';
-    title.style.minWidth = '80px';
-    row.appendChild(title);
-    const colImgs = document.createElement('div');
-    colImgs.className = 'thumb-col';
-    const addThumb = (label, b64) => {
-      if (!b64) return;
-      const lab = document.createElement('div');
-      lab.className = 'thumb-label';
-      lab.textContent = label;
-      const im = document.createElement('img');
-      im.className = 'thumb';
-      im.src = b64;
-      colImgs.appendChild(lab);
-      colImgs.appendChild(im);
-    };
-    addThumb('original', img && img.original_b64);
-    addThumb('preprocessed', img && img.preprocessed_b64);
-    addThumb('edge crop', img && img.edge_cropped_b64);
-    addThumb('auto crop', img && img.auto_cropped_b64);
-    row.appendChild(colImgs);
-    const colOcr = document.createElement('div');
-    colOcr.className = 'ocr-col';
-    const ocrBox = document.createElement('div');
-    ocrBox.className = 'ocr-box hscroll';
-    ocrBox.textContent = (img && img.ocr_text) ? img.ocr_text : '';
-    colOcr.appendChild(ocrBox);
-    row.appendChild(colOcr);
-    traceImagesEl.appendChild(row);
-  });
+  if (tbody) {
+    images.forEach((img) => {
+      const tr = document.createElement('tr');
+      const tdIn = document.createElement('td');
+      const tdOut = document.createElement('td');
+      const tdOcr = document.createElement('td');
+      const inImg = document.createElement('img');
+      inImg.className = 'trace-thumb';
+      inImg.src = (img && img.original_b64) || '';
+      tdIn.appendChild(inImg);
+      const outImg = document.createElement('img');
+      outImg.className = 'trace-thumb';
+      outImg.src = (img && (img.auto_cropped_b64 || img.edge_cropped_b64 || img.preprocessed_b64 || img.original_b64)) || '';
+      tdOut.appendChild(outImg);
+      const pre = document.createElement('pre');
+      pre.className = 'trace-ocr hscroll';
+      pre.textContent = (img && img.ocr_text) ? img.ocr_text : '';
+      tdOcr.appendChild(pre);
+      tr.appendChild(tdIn);
+      tr.appendChild(tdOut);
+      tr.appendChild(tdOcr);
+      tbody.appendChild(tr);
+    });
+  }
   // OCR texts
   let ocrTexts = [];
   images.forEach(img => { if (img && img.ocr_text) ocrTexts.push(img.ocr_text); });
