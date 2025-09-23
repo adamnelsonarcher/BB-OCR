@@ -224,7 +224,7 @@ function startTracePolling(id) {
       const latest = items[items.length - 1].trace;
       renderTrace({ _trace: latest });
     } catch {}
-  }, 800);
+  }, 3200);
 }
 
 function startLogPolling(id) {
@@ -251,7 +251,7 @@ function startLogPolling(id) {
         consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
       }
     } catch {}
-  }, 800);
+  }, 1200);
 }
 
 function escapeHtml(s) {

@@ -141,10 +141,7 @@ class _JobLogTee:
         self._last_line = line
         self._repeat_count = 0
     def write(self, s: str) -> int:
-        try:
-            self._original.write(s)
-        except Exception:
-            pass
+        # Do not forward to original console; keep logs in per-job stream only
         self._buffer += s
         # Flush complete lines to the log stream
         while "\n" in self._buffer:
