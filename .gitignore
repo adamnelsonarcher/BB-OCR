@@ -6,3 +6,14 @@ vlm_testing/llama/OllamaSetup.exe
 /img_to_json/i2j_ui/app/__pycache__
 /pricing_api/app/__pycache__
 *.pyc
+/img_to_json/ollama_to_JSON/books
+/img_to_json/ollama_to_JSON/books
+pipeline_components/vlm_testing/.venv/Scripts/accelerate-estimate-memory.exe
+pipeline_components/vlm_testing/llama/OllamaSetup.exe
+pipeline_components/vlm_testing/.venv/Scripts/numpy-config.exe
+/pipeline_components/vlm_testing/.venv
+/gradio_GPT/__pycache__
+/gradio_GPT/__pycache__
+/img_to_json/ocr_testing/hueristics/__pycache__
+/img_to_json/ocr_testing/preprocessing/__pycache__
+/img_to_json/ollama_to_JSON/__pycache__
