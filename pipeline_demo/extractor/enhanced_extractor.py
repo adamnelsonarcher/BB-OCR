@@ -466,6 +466,9 @@ class EnhancedBookMetadataExtractor:
             # Prepare processed previews for ALL images before OCR (preprocess / crop only)
             # This allows the UI to show processed thumbnails even for non-OCR images
             for idx, p in enumerate(image_paths):
+                if idx == 0:
+                    # Skip first image for preprocessing preview
+                    continue
                 try:
                     trace_img = trace["images"][idx]
                     temp_files_to_cleanup: List[str] = []

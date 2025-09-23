@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import requests
+import tempfile
 import threading
 from typing import Callable
 
@@ -258,13 +259,14 @@ def _find_output_dirs() -> List[str]:
 
 
 def _compute_default_ocr_indices(n: int) -> List[int]:
-	if n >= 3:
-		return [1, 2]
-	if n == 2:
-		return [0, 1]
-	if n == 1:
-		return [0]
-	return []
+    # Skip the first image (cover) for OCR by default
+    if n >= 3:
+        return [1, 2]
+    if n == 2:
+        return [1]
+    if n == 1:
+        return [0]
+    return []
 
 
 @app.post("/api/process_image")
@@ -279,11 +281,13 @@ async def process_image(
 	if image.content_type is None or not image.content_type.startswith("image/"):
 		raise HTTPException(status_code=400, detail="Uploaded file must be an image")
 
-	# Save upload
+	# Save upload (write to system temp to avoid dev server reloads on file change)
 	timestamp = int(time.time() * 1000)
 	extension = os.path.splitext(image.filename or "upload.jpg")[1] or ".jpg"
 	item_id = f"capture_{timestamp}"
-	saved_path = os.path.join(UPLOADS_DIR, f"{item_id}{extension}")
+	tmp_dir = os.path.join(tempfile.gettempdir(), "bb_ocr_ui_uploads")
+	os.makedirs(tmp_dir, exist_ok=True)
+	saved_path = os.path.join(tmp_dir, f"{item_id}{extension}")
 	with open(saved_path, "wb") as f:
 		f.write(await image.read())
 
@@ -315,7 +319,10 @@ async def process_images(
 		if uf.content_type is None or not uf.content_type.startswith("image/"):
 			raise HTTPException(status_code=400, detail=f"File {uf.filename} is not an image")
 		ext = os.path.splitext(uf.filename or f"capture_{idx}.jpg")[1] or ".jpg"
-		path = os.path.join(UPLOADS_DIR, f"{item_id}_{idx}{ext}")
+		# Write to system temp to avoid uvicorn reloads
+		tmp_dir = os.path.join(tempfile.gettempdir(), "bb_ocr_ui_uploads")
+		os.makedirs(tmp_dir, exist_ok=True)
+		path = os.path.join(tmp_dir, f"{item_id}_{idx}{ext}")
 		with open(path, "wb") as f:
 			f.write(await uf.read())
 		saved_paths.append(path)
