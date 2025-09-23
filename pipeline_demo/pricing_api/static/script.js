@@ -72,13 +72,21 @@ function toTable(obj) {
   const keys = Object.keys(obj);
   if (!keys.length) return '<div class="muted">(empty)</div>';
   const rows = keys.map(k => {
-    let v = obj[k];
-    if (Array.isArray(v)) v = v.join(', ');
-    else if (v && typeof v === 'object') v = JSON.stringify(v);
-    else if (v === null || v === undefined) v = '';
-    return `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(String(v))}</td></tr>`;
+    const val = obj[k];
+    let cellHtml = '';
+    if (Array.isArray(val)) {
+      cellHtml = escapeHtml(val.join(', '));
+    } else if (val && typeof val === 'object') {
+      // pretty JSON inside <pre> for readability
+      cellHtml = `<pre>${escapeHtml(JSON.stringify(val, null, 2))}</pre>`;
+    } else if (val === null || val === undefined) {
+      cellHtml = '';
+    } else {
+      cellHtml = escapeHtml(String(val));
+    }
+    return `<tr><td>${escapeHtml(k)}</td><td>${cellHtml}</td></tr>`;
   }).join('');
-  return `<table class="kv"><tbody>${rows}</tbody></table>`;
+  return `<table class="kv"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 function escapeHtml(s) {
