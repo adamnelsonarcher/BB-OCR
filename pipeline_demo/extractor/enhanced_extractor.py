@@ -96,7 +96,7 @@ class EnhancedBookMetadataExtractor:
 
     def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
                  crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True,
-                 edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 60.0):
+                 edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 30.0):
         """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
 
         Args:

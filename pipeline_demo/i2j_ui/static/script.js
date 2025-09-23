@@ -32,9 +32,44 @@ const edgeCropVal = document.getElementById('edge-crop-val');
 const autoCropChk = document.getElementById('auto-crop');
 const overlayBox = document.querySelector('.overlay-box');
 let pollTimer = null;
+let examplesIndex = {};
 
 let lastId = null;
 let captureQueue = []; // Array of Blobs
+let tableRows = [];
+
+function initTraceTable(count, previews = []) {
+  if (!traceTable) return;
+  const tbody = traceTable.querySelector('tbody');
+  tbody.innerHTML = '';
+  tableRows = [];
+  for (let i = 0; i < count; i++) {
+    const tr = document.createElement('tr');
+    const tdIn = document.createElement('td');
+    const tdOut = document.createElement('td');
+    const tdOcr = document.createElement('td');
+
+    const inImg = document.createElement('img');
+    inImg.className = 'trace-thumb';
+    const previewUrl = previews[i] || '';
+    if (previewUrl) inImg.src = previewUrl;
+    tdIn.appendChild(inImg);
+
+    const outImg = document.createElement('img');
+    outImg.className = 'trace-thumb';
+    tdOut.appendChild(outImg);
+
+    const pre = document.createElement('pre');
+    pre.className = 'trace-ocr hscroll';
+    tdOcr.appendChild(pre);
+
+    tr.appendChild(tdIn);
+    tr.appendChild(tdOut);
+    tr.appendChild(tdOcr);
+    tbody.appendChild(tr);
+    tableRows.push({ tr, tdInImg: inImg, tdOutImg: outImg, tdOcrPre: pre });
+  }
+}
 
 async function init() {
   try {
@@ -76,6 +111,7 @@ async function init() {
       const opt = document.createElement('option');
       opt.value = item.id; opt.textContent = `${item.id} (${item.count})${item.has_output ? ' • has output' : ''}`;
       examplesSel.appendChild(opt);
+      examplesIndex[item.id] = { count: item.count };
     }
   } catch {}
 }
@@ -118,7 +154,7 @@ function renderTable(obj) {
 function renderTrace(metadata) {
   const t = (metadata && metadata._trace) ? metadata._trace : null;
   if (!t) {
-    traceImagesEl.innerHTML = '';
+    if (traceTable) traceTable.querySelector('tbody').innerHTML = '';
     traceOcrTextEl.textContent = '';
     traceOcrJsonEl.textContent = '';
     tracePromptEl.textContent = '';
@@ -127,33 +163,20 @@ function renderTrace(metadata) {
     traceJsonEl.textContent = '';
     return;
   }
-  // live table rows (input, processed, ocr)
-  const tbody = traceTable ? traceTable.querySelector('tbody') : null;
-  if (tbody) tbody.innerHTML = '';
   const images = Array.isArray(t.images) ? t.images : [];
-  if (tbody) {
-    images.forEach((img) => {
-      const tr = document.createElement('tr');
-      const tdIn = document.createElement('td');
-      const tdOut = document.createElement('td');
-      const tdOcr = document.createElement('td');
-      const inImg = document.createElement('img');
-      inImg.className = 'trace-thumb';
-      inImg.src = (img && img.original_b64) || '';
-      tdIn.appendChild(inImg);
-      const outImg = document.createElement('img');
-      outImg.className = 'trace-thumb';
-      outImg.src = (img && (img.auto_cropped_b64 || img.edge_cropped_b64 || img.preprocessed_b64 || img.original_b64)) || '';
-      tdOut.appendChild(outImg);
-      const pre = document.createElement('pre');
-      pre.className = 'trace-ocr hscroll';
-      pre.textContent = (img && img.ocr_text) ? img.ocr_text : '';
-      tdOcr.appendChild(pre);
-      tr.appendChild(tdIn);
-      tr.appendChild(tdOut);
-      tr.appendChild(tdOcr);
-      tbody.appendChild(tr);
-    });
+  if (!tableRows.length && images.length) initTraceTable(images.length, []);
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i] || {};
+    if (!tableRows[i]) continue;
+    const row = tableRows[i];
+    if (img.original_b64) {
+      if (!row.tdInImg.src || row.tdInImg.src.startsWith('blob:')) {
+        row.tdInImg.src = img.original_b64;
+      }
+    }
+    const proc = img.auto_cropped_b64 || img.edge_cropped_b64 || img.preprocessed_b64;
+    if (proc) row.tdOutImg.src = proc;
+    if (img.ocr_text) row.tdOcrPre.textContent = img.ocr_text;
   }
   // OCR texts
   let ocrTexts = [];
@@ -230,6 +253,12 @@ async function processSingle(blob, filename = 'capture.jpg') {
   fd.append('edge_crop', String(Number(edgeCropRange.value || 0)));
   fd.append('crop_ocr', autoCropChk.checked ? 'true' : 'false');
 
+  // initialize table with 1 row and a local preview
+  try {
+    const preview = URL.createObjectURL(blob);
+    initTraceTable(1, [preview]);
+  } catch {}
+
   const resp = await fetch('/api/process_image', { method: 'POST', body: fd });
   const data = await resp.json();
   if (!resp.ok) {
@@ -242,7 +271,6 @@ async function processSingle(blob, filename = 'capture.jpg') {
   lastId = data.id;
   statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
-  // poll result until done
   (async function pollResult() {
     try {
       const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
@@ -282,6 +310,12 @@ async function processBatch(blobs) {
   fd.append('use_preprocessing', preprocChk.checked ? 'true' : 'false');
   fd.append('edge_crop', String(Number(edgeCropRange.value || 0)));
   fd.append('crop_ocr', autoCropChk.checked ? 'true' : 'false');
+
+  // initialize table rows with local previews
+  try {
+    const previews = blobs.map(b => URL.createObjectURL(b));
+    initTraceTable(blobs.length, previews);
+  } catch {}
 
   const resp = await fetch('/api/process_images', { method: 'POST', body: fd });
   const data = await resp.json();
@@ -369,7 +403,13 @@ btnRunExample.addEventListener('click', async () => {
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
 
-  const resp = await fetch('/api/process_example', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ book_id: id, model: modelSel.value || 'gemma3:4b', ocr_engine: ocrSel.value || 'easyocr', use_preprocessing: preprocChk.checked }) });
+  // initialize table rows for this example using known count
+  try {
+    const count = (examplesIndex[id] && examplesIndex[id].count) || 0;
+    if (count > 0) initTraceTable(count, []);
+  } catch {}
+
+  const resp = await fetch('/api/process_example', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ book_id: id, model: modelSel.value || 'gemma3:4b', ocr_engine: ocrSel.value || 'easyocr', use_preprocessing: preprocChk.checked, edge_crop: Number(edgeCropRange.value || 0), crop_ocr: autoCropChk.checked }) });
   const data = await resp.json();
   if (!resp.ok) {
     statusEl.textContent = 'Error';

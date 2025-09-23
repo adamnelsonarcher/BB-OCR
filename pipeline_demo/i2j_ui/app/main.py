@@ -204,7 +204,7 @@ def _compute_default_ocr_indices(n: int) -> List[int]:
 	if n >= 3:
 		return [1, 2]
 	if n == 2:
-		return [1]
+		return [0, 1]
 	if n == 1:
 		return [0]
 	return []
@@ -301,6 +301,8 @@ class ExamplePayload(BaseModel):
 	model: Optional[str] = "gemma3:4b"
 	ocr_engine: Optional[str] = "easyocr"
 	use_preprocessing: Optional[bool] = True
+	edge_crop: Optional[float] = 0.0
+	crop_ocr: Optional[bool] = False
 
 
 @app.post("/api/process_example")
@@ -321,7 +323,7 @@ async def process_example(payload: ExamplePayload):
 	# Background job for example
 	job_id = f"example_{payload.book_id}"
 	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
-		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': 0.0, 'crop_ocr': False
+		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False)
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
