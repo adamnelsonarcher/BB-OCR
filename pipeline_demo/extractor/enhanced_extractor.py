@@ -20,6 +20,7 @@ import easyocr
 import pytesseract
 import cv2
 import numpy as np
+import tempfile
 
 # Add the parent directories to the path to import from other modules
 parent_dir = os.path.dirname(os.path.abspath(__file__))
@@ -172,6 +173,12 @@ class EnhancedBookMetadataExtractor:
         except Exception:
             return None
 
+    def _get_temp_dir(self) -> str:
+        """Return a process-wide temp directory for image artifacts outside the project tree."""
+        base = os.path.join(tempfile.gettempdir(), "bb_ocr_pipeline_temp")
+        os.makedirs(base, exist_ok=True)
+        return base
+
 
     def _warm_ollama_model(self) -> None:
         """Send a tiny request to prompt the Ollama server to load the model."""
@@ -243,9 +250,8 @@ class EnhancedBookMetadataExtractor:
         if crop_area > 0.9 * img_area:
             return None
         cropped = img[y0:y1, x0:x1]
-        # Write to temp alongside source
-        temp_dir = os.path.join(os.path.dirname(image_path), "temp_preprocessed")
-        os.makedirs(temp_dir, exist_ok=True)
+        # Write to temp outside project tree to avoid dev server reloads
+        temp_dir = self._get_temp_dir()
         base = os.path.splitext(os.path.basename(image_path))[0]
         out_path = os.path.join(temp_dir, f"{base}_cropped.png")
         cv2.imwrite(out_path, cropped)
@@ -270,8 +276,7 @@ class EnhancedBookMetadataExtractor:
         if x1 - x0 < max(16, w * 0.2) or y1 - y0 < max(16, h * 0.2):
             return None
         cropped = img[y0:y1, x0:x1]
-        temp_dir = os.path.join(os.path.dirname(image_path), "temp_preprocessed")
-        os.makedirs(temp_dir, exist_ok=True)
+        temp_dir = self._get_temp_dir()
         base = os.path.splitext(os.path.basename(image_path))[0]
         out_path = os.path.join(temp_dir, f"{base}_edgecrop_{int(percent)}.png")
         cv2.imwrite(out_path, cropped)
@@ -293,9 +298,8 @@ class EnhancedBookMetadataExtractor:
             trace_image.setdefault("original_b64", self._image_to_data_url(image_path))
         if self.use_preprocessing and PREPROCESSING_AVAILABLE:
             print(f"    📝 Applying image preprocessing...")
-            # Create temporary preprocessed image
-            temp_dir = os.path.join(os.path.dirname(image_path), "temp_preprocessed")
-            os.makedirs(temp_dir, exist_ok=True)
+            # Create temporary preprocessed image in system temp
+            temp_dir = self._get_temp_dir()
             
             base_name = os.path.splitext(os.path.basename(image_path))[0]
             preprocessed_image_path = os.path.join(temp_dir, f"{base_name}_preprocessed.png")
@@ -397,12 +401,8 @@ class EnhancedBookMetadataExtractor:
             for tmp in temp_files_to_cleanup:
                 if tmp != image_path and os.path.exists(tmp):
                     os.remove(tmp)
-            # Attempt to clean the temp directory if empty
-            if temp_files_to_cleanup:
-                temp_dir = os.path.dirname(temp_files_to_cleanup[0])
-                if os.path.exists(temp_dir) and not os.listdir(temp_dir):
-                    os.rmdir(temp_dir)
-                print(f"    🧹 Cleaned up temporary OCR artifacts")
+            # Skip removing the shared temp directory
+            print(f"    🧹 Cleaned up temporary OCR artifacts")
         except Exception:
             pass  # Ignore cleanup errors
         
