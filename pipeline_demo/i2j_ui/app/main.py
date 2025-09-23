@@ -44,19 +44,69 @@ app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
 # In-memory trace streams per job id
 _TRACE_LOCK = threading.Lock()
 _TRACE_STREAMS: Dict[str, list] = {}
+_TRACE_SEQ: Dict[str, int] = {}
 _JOBS_LOCK = threading.Lock()
 _JOBS: Dict[str, Dict[str, Any]] = {}
 
 # In-memory console log streams per job id
 _LOG_LOCK = threading.Lock()
 _LOG_STREAMS: Dict[str, list] = {}
+_LOG_SEQ: Dict[str, int] = {}
 
 def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
+    # Track which heavy image fields we've already sent to clients per image index
+    heavy_fields = ("original_b64", "preprocessed_b64", "edge_cropped_b64", "auto_cropped_b64")
+    seen_by_image: Dict[int, Dict[str, bool]] = {}
+    seen_prompt = False
+    seen_vlm = False
+
     def _sink(trace: dict) -> None:
+        # Build a lightweight snapshot to stream (omit heavy data repeatedly)
+        lite: Dict[str, Any] = {}
+        # Images
+        images = trace.get("images") or []
+        out_images: List[Dict[str, Any]] = []
+        for idx, img in enumerate(images):
+            seen = seen_by_image.setdefault(idx, {k: False for k in heavy_fields})
+            out: Dict[str, Any] = {}
+            # small fields
+            if isinstance(img, dict):
+                if "ocr_text" in img:
+                    out["ocr_text"] = img["ocr_text"]
+                if "preprocessing_steps" in img:
+                    out["preprocessing_steps"] = img["preprocessing_steps"]
+                # heavy fields only once per field
+                for k in heavy_fields:
+                    v = img.get(k)
+                    if v and not seen.get(k, False):
+                        out[k] = v
+                        seen[k] = True
+            out_images.append(out)
+        if out_images:
+            lite["images"] = out_images
+        # steps (limit)
+        steps = trace.get("steps") or []
+        if steps:
+            lite["steps"] = steps[-50:]
+        # ocr json (small)
+        if trace.get("ocr_json") is not None:
+            lite["ocr_json"] = trace.get("ocr_json")
+        # enhanced prompt (send once)
+        if trace.get("enhanced_prompt") and not seen_prompt:
+            lite["enhanced_prompt"] = trace.get("enhanced_prompt")
+            seen_prompt = True
+        # vlm raw (send once)
+        if trace.get("ollama_raw") and not seen_vlm:
+            lite["ollama_raw"] = trace.get("ollama_raw")
+            seen_vlm = True
+
         with _TRACE_LOCK:
+            seq = _TRACE_SEQ.get(job_id, 0) + 1
+            _TRACE_SEQ[job_id] = seq
             _TRACE_STREAMS.setdefault(job_id, []).append({
                 "ts": int(time.time() * 1000),
-                "trace": trace,
+                "seq": seq,
+                "trace": lite,
             })
     return _sink
 
@@ -75,8 +125,11 @@ class _JobLogTee:
         while "\n" in self._buffer:
             line, self._buffer = self._buffer.split("\n", 1)
             with _LOG_LOCK:
+                seq = _LOG_SEQ.get(self._job_id, 0) + 1
+                _LOG_SEQ[self._job_id] = seq
                 _LOG_STREAMS.setdefault(self._job_id, []).append({
                     "ts": int(time.time() * 1000),
+                    "seq": seq,
                     "line": line,
                 })
         return len(s)
@@ -87,17 +140,23 @@ class _JobLogTee:
             pass
 
 @app.get("/api/trace_poll")
-async def trace_poll(id: str, last_ts: int = 0):
+async def trace_poll(id: str, last_ts: int = 0, last_seq: int = -1):
     with _TRACE_LOCK:
         items = _TRACE_STREAMS.get(id, [])
-        new_items = [it for it in items if it.get("ts", 0) > last_ts]
+        if last_seq >= 0:
+            new_items = [it for it in items if it.get("seq", -1) > last_seq]
+        else:
+            new_items = [it for it in items if it.get("ts", 0) > last_ts]
     return {"items": new_items, "count": len(new_items)}
 
 @app.get("/api/log_poll")
-async def log_poll(id: str, last_ts: int = 0):
+async def log_poll(id: str, last_ts: int = 0, last_seq: int = -1):
     with _LOG_LOCK:
         items = _LOG_STREAMS.get(id, [])
-        new_items = [it for it in items if it.get("ts", 0) > last_ts]
+        if last_seq >= 0:
+            new_items = [it for it in items if it.get("seq", -1) > last_seq]
+        else:
+            new_items = [it for it in items if it.get("ts", 0) > last_ts]
     return {"items": new_items, "count": len(new_items)}
 
 @app.get("/api/job_status")

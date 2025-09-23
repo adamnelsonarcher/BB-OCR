@@ -157,19 +157,32 @@ class EnhancedBookMetadataExtractor:
                 self._trace_sink(dict(trace))
         except Exception:
             pass
-    def _image_to_data_url(self, path: str, fallback_ext: str = "png") -> Optional[str]:
-        """Read file and return data URL base64 string, or None if not found."""
+    def _image_to_data_url(self, path: str, fallback_ext: str = "png", *, max_dim: int = 800) -> Optional[str]:
+        """Read image, downscale to max_dim, and return data URL base64 string."""
         try:
             if not path or not os.path.exists(path):
                 return None
-            with open(path, "rb") as f:
-                b64 = base64.b64encode(f.read()).decode("utf-8")
-            ext = (os.path.splitext(path)[1] or f".{fallback_ext}").lower().lstrip(".")
-            mime = {
-                "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
-                "bmp": "image/bmp", "gif": "image/gif", "tiff": "image/tiff"
-            }.get(ext, "image/png")
-            return f"data:{mime};base64,{b64}"
+            # Downscale for UI preview to avoid huge base64 payloads
+            try:
+                img = Image.open(path)
+                img.thumbnail((max_dim, max_dim))
+                from io import BytesIO
+                buf = BytesIO()
+                img.save(buf, format="PNG")
+                data = buf.getvalue()
+                mime = "image/png"
+                b64 = base64.b64encode(data).decode("utf-8")
+                return f"data:{mime};base64,{b64}"
+            except Exception:
+                # Fallback: raw bytes
+                with open(path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode("utf-8")
+                ext = (os.path.splitext(path)[1] or f".{fallback_ext}").lower().lstrip(".")
+                mime = {
+                    "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                    "bmp": "image/bmp", "gif": "image/gif", "tiff": "image/tiff"
+                }.get(ext, "image/png")
+                return f"data:{mime};base64,{b64}"
         except Exception:
             return None
 
@@ -365,7 +378,8 @@ class EnhancedBookMetadataExtractor:
         print(f"    🤖 Running {self.ocr_engine.upper()} OCR...")
         try:
             if self.ocr_engine == "easyocr":
-                results = self.easyocr_reader.readtext(crop_image_path)
+                # Use a smaller EasyOCR configuration to reduce memory usage
+                results = self.easyocr_reader.readtext(crop_image_path, paragraph=False, batch_size=1, workers=0)
                 text = " ".join([result[1] for result in results])
                 print(f"    ✓ EasyOCR found {len(results)} text regions")
             elif self.ocr_engine == "tesseract":

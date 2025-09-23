@@ -211,14 +211,16 @@ function renderTrace(metadata) {
 
 function startTracePolling(id) {
   let lastTs = 0;
+  let lastSeq = -1;
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
     try {
-      const resp = await fetch(`/api/trace_poll?id=${encodeURIComponent(id)}&last_ts=${lastTs}`);
+      const resp = await fetch(`/api/trace_poll?id=${encodeURIComponent(id)}&last_ts=${lastTs}&last_seq=${lastSeq}`);
       const data = await resp.json();
       const items = data.items || [];
       if (!items.length) return;
       lastTs = Math.max(lastTs, ...items.map(it => it.ts || 0));
+      lastSeq = Math.max(lastSeq, ...items.map(it => it.seq || -1));
       const latest = items[items.length - 1].trace;
       renderTrace({ _trace: latest });
     } catch {}
@@ -227,15 +229,17 @@ function startTracePolling(id) {
 
 function startLogPolling(id) {
   let lastTs = 0;
+  let lastSeq = -1;
   if (logPollTimer) clearInterval(logPollTimer);
   if (consoleLogEl) consoleLogEl.textContent = '';
   logPollTimer = setInterval(async () => {
     try {
-      const resp = await fetch(`/api/log_poll?id=${encodeURIComponent(id)}&last_ts=${lastTs}`);
+      const resp = await fetch(`/api/log_poll?id=${encodeURIComponent(id)}&last_ts=${lastTs}&last_seq=${lastSeq}`);
       const data = await resp.json();
       const items = data.items || [];
       if (!items.length) return;
       lastTs = Math.max(lastTs, ...items.map(it => it.ts || 0));
+      lastSeq = Math.max(lastSeq, ...items.map(it => it.seq || -1));
       if (consoleLogEl) {
         const text = items.map(it => (it.line || '')).join('\n');
         consoleLogEl.textContent += (consoleLogEl.textContent ? '\n' : '') + text;
