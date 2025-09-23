@@ -241,6 +241,8 @@ function startLogPolling(id) {
       lastTs = Math.max(lastTs, ...items.map(it => it.ts || 0));
       lastSeq = Math.max(lastSeq, ...items.map(it => it.seq || -1));
       if (consoleLogEl) {
+        // Collapse duplicate lines coming from backend (already coalesced), and
+        // throttle appending to reduce layout thrash
         const text = items.map(it => (it.line || '')).join('\n');
         consoleLogEl.textContent += (consoleLogEl.textContent ? '\n' : '') + text;
         if (consoleLogEl.textContent.length > 10000) {
@@ -412,12 +414,24 @@ btnProcessQueued.addEventListener('click', async () => {
     statusEl.textContent = 'Queue empty';
     return;
   }
+  // Clear previous results/logs/trace before starting a new batch
+  errorEl.classList.add('hidden');
+  metaTable.innerHTML = '';
+  actions.classList.add('hidden');
+  if (consoleLogEl) consoleLogEl.textContent = '';
+  initTraceTable(0, []);
   await processBatch(captureQueue);
 });
 
 fileInput.addEventListener('change', async (e) => {
   if (!e.target.files || !e.target.files.length) return;
   const blobs = Array.from(e.target.files);
+  // Clear previous results/logs/trace when loading a new image set
+  errorEl.classList.add('hidden');
+  metaTable.innerHTML = '';
+  actions.classList.add('hidden');
+  if (consoleLogEl) consoleLogEl.textContent = '';
+  initTraceTable(0, []);
   if (blobs.length === 1) await processSingle(blobs[0], blobs[0].name);
   else await processBatch(blobs);
 });
@@ -446,6 +460,7 @@ btnRunExample.addEventListener('click', async () => {
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
   if (consoleLogEl) consoleLogEl.textContent = '';
+  initTraceTable(0, []);
 
   // initialize table rows for this example using known count
   try {

@@ -13,6 +13,7 @@ import requests
 import tempfile
 import threading
 from typing import Callable
+import logging
 
 # Resolve path to the OCR/LLM pipeline (pipeline_demo/extractor)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -115,6 +116,29 @@ class _JobLogTee:
         self._original = original
         self._job_id = job_id
         self._buffer = ""
+        self._last_line = None
+        self._repeat_count = 0
+    def _append_line(self, line: str) -> None:
+        # Coalesce duplicate consecutive lines to reduce spam
+        if line == self._last_line:
+            self._repeat_count += 1
+            return
+        # Flush previous repeated line
+        if self._last_line is not None:
+            out = self._last_line
+            if self._repeat_count > 0:
+                out = f"{out} (x{self._repeat_count + 1})"
+            with _LOG_LOCK:
+                seq = _LOG_SEQ.get(self._job_id, 0) + 1
+                _LOG_SEQ[self._job_id] = seq
+                _LOG_STREAMS.setdefault(self._job_id, []).append({
+                    "ts": int(time.time() * 1000),
+                    "seq": seq,
+                    "line": out,
+                })
+        # Start tracking new line
+        self._last_line = line
+        self._repeat_count = 0
     def write(self, s: str) -> int:
         try:
             self._original.write(s)
@@ -124,14 +148,7 @@ class _JobLogTee:
         # Flush complete lines to the log stream
         while "\n" in self._buffer:
             line, self._buffer = self._buffer.split("\n", 1)
-            with _LOG_LOCK:
-                seq = _LOG_SEQ.get(self._job_id, 0) + 1
-                _LOG_SEQ[self._job_id] = seq
-                _LOG_STREAMS.setdefault(self._job_id, []).append({
-                    "ts": int(time.time() * 1000),
-                    "seq": seq,
-                    "line": line,
-                })
+            self._append_line(line)
         return len(s)
     def flush(self) -> None:
         try:
@@ -226,6 +243,26 @@ app.add_middleware(
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# Quiet uvicorn access logs for noisy polling endpoints
+class _AccessLogSilencer(logging.Filter):
+    _SILENCE_PATHS = ("/api/trace_poll", "/api/log_poll", "/api/job_result")
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            args = getattr(record, 'args', {}) or {}
+            request_line = args.get('request_line') or ''
+            status_code = int(args.get('status_code') or 0)
+            # Hide frequent success/accepted logs for polling
+            if any(p in request_line for p in self._SILENCE_PATHS) and status_code in (200, 202):
+                return False
+        except Exception:
+            pass
+        return True
+
+try:
+    logging.getLogger("uvicorn.access").addFilter(_AccessLogSilencer())
+except Exception:
+    pass
 
 
 class AcceptPayload(BaseModel):
