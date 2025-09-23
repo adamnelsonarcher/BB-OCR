@@ -46,6 +46,10 @@ _TRACE_STREAMS: Dict[str, list] = {}
 _JOBS_LOCK = threading.Lock()
 _JOBS: Dict[str, Dict[str, Any]] = {}
 
+# In-memory console log streams per job id
+_LOG_LOCK = threading.Lock()
+_LOG_STREAMS: Dict[str, list] = {}
+
 def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
     def _sink(trace: dict) -> None:
         with _TRACE_LOCK:
@@ -55,10 +59,43 @@ def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
             })
     return _sink
 
+class _JobLogTee:
+    def __init__(self, original, job_id: str):
+        self._original = original
+        self._job_id = job_id
+        self._buffer = ""
+    def write(self, s: str) -> int:
+        try:
+            self._original.write(s)
+        except Exception:
+            pass
+        self._buffer += s
+        # Flush complete lines to the log stream
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            with _LOG_LOCK:
+                _LOG_STREAMS.setdefault(self._job_id, []).append({
+                    "ts": int(time.time() * 1000),
+                    "line": line,
+                })
+        return len(s)
+    def flush(self) -> None:
+        try:
+            self._original.flush()
+        except Exception:
+            pass
+
 @app.get("/api/trace_poll")
 async def trace_poll(id: str, last_ts: int = 0):
     with _TRACE_LOCK:
         items = _TRACE_STREAMS.get(id, [])
+        new_items = [it for it in items if it.get("ts", 0) > last_ts]
+    return {"items": new_items, "count": len(new_items)}
+
+@app.get("/api/log_poll")
+async def log_poll(id: str, last_ts: int = 0):
+    with _LOG_LOCK:
+        items = _LOG_STREAMS.get(id, [])
         new_items = [it for it in items if it.get("ts", 0) > last_ts]
     return {"items": new_items, "count": len(new_items)}
 
@@ -87,15 +124,35 @@ def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_e
     with _JOBS_LOCK:
         _JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
     try:
-        extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
+        # Prepare sinks
         trace_sink = _make_trace_sink(job_id)
-        ocr_indices = _compute_default_ocr_indices(len(image_paths))
-        metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
+        with _LOG_LOCK:
+            _LOG_STREAMS.setdefault(job_id, [])
+        # Tee stdout/stderr to per-job log stream
+        _orig_out, _orig_err = sys.stdout, sys.stderr
+        sys.stdout = _JobLogTee(_orig_out, job_id)
+        sys.stderr = _JobLogTee(_orig_err, job_id)
+        try:
+            extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
+            ocr_indices = _compute_default_ocr_indices(len(image_paths))
+            metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
+        finally:
+            sys.stdout = _orig_out
+            sys.stderr = _orig_err
         with _JOBS_LOCK:
             _JOBS[job_id].update({"status": "done", "metadata": metadata})
     except Exception as e:
         with _JOBS_LOCK:
             _JOBS[job_id].update({"status": "error", "error": str(e)})
+    # Trim stored streams to avoid unbounded growth
+    with _TRACE_LOCK:
+        items = _TRACE_STREAMS.get(job_id, [])
+        if len(items) > 200:
+            _TRACE_STREAMS[job_id] = items[-200:]
+    with _LOG_LOCK:
+        logs = _LOG_STREAMS.get(job_id, [])
+        if len(logs) > 1000:
+            _LOG_STREAMS[job_id] = logs[-1000:]
 
 
 # CORS for local use
@@ -164,7 +221,7 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 			edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
 			crop_for_ocr=bool(auto_crop),
 			warm_model=False,
-			ollama_timeout_seconds=45.0,
+			ollama_timeout_seconds=180.0,
 		)
 	except Exception:
 		# Fallback to tesseract if easyocr fails to init
@@ -176,7 +233,7 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 				edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
 				crop_for_ocr=bool(auto_crop),
 				warm_model=False,
-				ollama_timeout_seconds=45.0,
+				ollama_timeout_seconds=180.0,
 			)
 		raise
 

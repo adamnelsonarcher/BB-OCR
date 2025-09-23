@@ -16,6 +16,7 @@ const tracePromptEl = document.getElementById('trace-prompt');
 const traceVlmEl = document.getElementById('trace-vlm');
 const traceStepsEl = document.getElementById('trace-steps');
 const traceJsonEl = document.getElementById('trace-json');
+const consoleLogEl = document.getElementById('console-log');
 const btnAccept = document.getElementById('accept');
 const btnReject = document.getElementById('reject');
 const btnPricing = document.getElementById('pricing');
@@ -32,6 +33,7 @@ const edgeCropVal = document.getElementById('edge-crop-val');
 const autoCropChk = document.getElementById('auto-crop');
 const overlayBox = document.querySelector('.overlay-box');
 let pollTimer = null;
+let logPollTimer = null;
 let examplesIndex = {};
 
 let lastId = null;
@@ -193,8 +195,18 @@ function renderTrace(metadata) {
     const info = s.info ? escapeHtml(JSON.stringify(s.info)) : '';
     return `<div>[${String(i+1).padStart(2,'0')}] ${escapeHtml(s.step || '')} ${info}</div>`;
   }).join('\n');
-  // raw trace JSON
-  try { traceJsonEl.textContent = JSON.stringify(t, null, 2); } catch { traceJsonEl.textContent = ''; }
+  // raw trace JSON (redact large base64 fields to keep UI light)
+  try {
+    const redacted = JSON.parse(JSON.stringify(t));
+    const imgs = Array.isArray(redacted.images) ? redacted.images : [];
+    for (const im of imgs) {
+      if (im.original_b64) im.original_b64 = '[base64 omitted]';
+      if (im.preprocessed_b64) im.preprocessed_b64 = '[base64 omitted]';
+      if (im.edge_cropped_b64) im.edge_cropped_b64 = '[base64 omitted]';
+      if (im.auto_cropped_b64) im.auto_cropped_b64 = '[base64 omitted]';
+    }
+    traceJsonEl.textContent = JSON.stringify(redacted, null, 2);
+  } catch { traceJsonEl.textContent = ''; }
 }
 
 function startTracePolling(id) {
@@ -210,7 +222,30 @@ function startTracePolling(id) {
       const latest = items[items.length - 1].trace;
       renderTrace({ _trace: latest });
     } catch {}
-  }, 500);
+  }, 800);
+}
+
+function startLogPolling(id) {
+  let lastTs = 0;
+  if (logPollTimer) clearInterval(logPollTimer);
+  if (consoleLogEl) consoleLogEl.textContent = '';
+  logPollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/log_poll?id=${encodeURIComponent(id)}&last_ts=${lastTs}`);
+      const data = await resp.json();
+      const items = data.items || [];
+      if (!items.length) return;
+      lastTs = Math.max(lastTs, ...items.map(it => it.ts || 0));
+      if (consoleLogEl) {
+        const text = items.map(it => (it.line || '')).join('\n');
+        consoleLogEl.textContent += (consoleLogEl.textContent ? '\n' : '') + text;
+        if (consoleLogEl.textContent.length > 10000) {
+          consoleLogEl.textContent = consoleLogEl.textContent.slice(-10000);
+        }
+        consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+      }
+    } catch {}
+  }, 800);
 }
 
 function escapeHtml(s) {
@@ -244,6 +279,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  if (consoleLogEl) consoleLogEl.textContent = '';
 
   const fd = new FormData();
   fd.append('image', blob, filename);
@@ -271,6 +307,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
   lastId = data.id;
   statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
+  if (lastId) startLogPolling(lastId);
   (async function pollResult() {
     try {
       const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
@@ -300,6 +337,7 @@ async function processBatch(blobs) {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  if (consoleLogEl) consoleLogEl.textContent = '';
 
   const fd = new FormData();
   for (let i = 0; i < blobs.length; i++) {
@@ -329,6 +367,7 @@ async function processBatch(blobs) {
   lastId = data.id;
   statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
+  if (lastId) startLogPolling(lastId);
   (async function pollResult() {
     try {
       const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
@@ -402,6 +441,7 @@ btnRunExample.addEventListener('click', async () => {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  if (consoleLogEl) consoleLogEl.textContent = '';
 
   // initialize table rows for this example using known count
   try {
@@ -419,11 +459,31 @@ btnRunExample.addEventListener('click', async () => {
   }
 
   lastId = data.id;
-  statusEl.textContent = `Processed example: ${id}`;
-  metaTable.innerHTML = renderTable(data.metadata);
-  renderTrace(data.metadata);
-  actions.classList.remove('hidden');
+  statusEl.textContent = `Started: ${(data.files || []).join(', ') || id}`;
   if (lastId) startTracePolling(lastId);
+  if (lastId) startLogPolling(lastId);
+  (async function pollResult() {
+    try {
+      const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
+      const j = await r.json();
+      if (r.status === 202) {
+        setTimeout(pollResult, 600);
+        return;
+      }
+      if (j && j.status === 'error') {
+        statusEl.textContent = 'Error';
+        errorEl.textContent = j.error || 'Unknown error';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      if (r.ok && j && j.status === 'done') {
+        statusEl.textContent = `Processed: ${(j.files || []).join(', ') || id}`;
+        metaTable.innerHTML = renderTable(j.metadata);
+        renderTrace(j.metadata);
+        actions.classList.remove('hidden');
+      }
+    } catch (e) {}
+  })();
 });
 
 btnLoadExampleOutput.addEventListener('click', async () => {

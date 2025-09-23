@@ -96,7 +96,7 @@ class EnhancedBookMetadataExtractor:
 
     def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
                  crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True,
-                 edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 30.0):
+                 edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 300.0):
         """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
 
         Args:
@@ -462,6 +462,59 @@ class EnhancedBookMetadataExtractor:
                 trace["images"].append({"original_b64": self._image_to_data_url(p)})
             trace["steps"].append({"step": "seed_images", "info": {"count": len(image_paths)}})
             self._emit_trace(trace)
+
+            # Prepare processed previews for ALL images before OCR (preprocess / crop only)
+            # This allows the UI to show processed thumbnails even for non-OCR images
+            for idx, p in enumerate(image_paths):
+                try:
+                    trace_img = trace["images"][idx]
+                    temp_files_to_cleanup: List[str] = []
+                    preview_base_path = p
+                    # Preprocessing (if available and enabled)
+                    if self.use_preprocessing and PREPROCESSING_AVAILABLE:
+                        try:
+                            temp_dir = self._get_temp_dir()
+                            base_name = os.path.splitext(os.path.basename(p))[0]
+                            pre_path = os.path.join(temp_dir, f"{base_name}_pre_preview.png")
+                            _, pre_path, steps = preprocess_for_book_cover(p, pre_path)
+                            temp_files_to_cleanup.append(pre_path)
+                            trace_img["preprocessing_steps"] = steps
+                            trace_img["preprocessed_b64"] = self._image_to_data_url(pre_path)
+                            trace["steps"].append({"step": "preprocess_preview", "image_index": idx, "info": {"steps": steps}})
+                            self._emit_trace(trace)
+                            preview_base_path = pre_path
+                        except Exception:
+                            preview_base_path = p
+                    # Edge crop (simple centered crop)
+                    if self.edge_crop_percent > 0.0:
+                        try:
+                            central = self._central_edge_crop(preview_base_path, self.edge_crop_percent)
+                            if central and os.path.exists(central):
+                                temp_files_to_cleanup.append(central)
+                                trace_img["edge_cropped_b64"] = self._image_to_data_url(central)
+                                trace["steps"].append({"step": "edge_crop_preview", "image_index": idx})
+                                self._emit_trace(trace)
+                                preview_base_path = central
+                        except Exception:
+                            pass
+                    # Auto text crop (heuristic), only if not already edge-cropped to a smaller region
+                    if self.crop_for_ocr:
+                        try:
+                            cropped = self._auto_crop_text_region(preview_base_path, self.crop_margin)
+                            if cropped and os.path.exists(cropped):
+                                temp_files_to_cleanup.append(cropped)
+                                trace_img["auto_cropped_b64"] = self._image_to_data_url(cropped)
+                                trace["steps"].append({"step": "auto_crop_preview", "image_index": idx})
+                                self._emit_trace(trace)
+                        except Exception:
+                            pass
+                finally:
+                    try:
+                        for tmp in list(locals().get('temp_files_to_cleanup', [])):
+                            if tmp and os.path.exists(tmp):
+                                os.remove(tmp)
+                    except Exception:
+                        pass
         
         
         print(f"\n🔍 OCR PROCESSING PHASE")
