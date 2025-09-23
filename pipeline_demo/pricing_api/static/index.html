@@ -1,0 +1,54 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pricing API Tester</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/script.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <h1>Pricing API Tester</h1>
+    <div id="env"></div>
+  </header>
+  <main>
+    <section class="controls">
+      <div class="row">
+        <label for="processed">Processed books</label>
+        <select id="processed"></select>
+        <button id="btnLoad">Load</button>
+      </div>
+      <div class="row">
+        <label for="json">Input JSON (book metadata)</label>
+        <textarea id="json" rows="12" placeholder='{"title":"The Hobbit","authors":["J. R. R. Tolkien"],"isbn_13":null,"isbn_10":null}'></textarea>
+      </div>
+      <div class="row">
+        <label>Providers</label>
+        <div id="providers"></div>
+      </div>
+      <div class="row actions">
+        <button id="btnRun">Run Lookup</button>
+      </div>
+    </section>
+    <section class="result">
+      <h2>Raw Response</h2>
+      <pre id="out"></pre>
+    </section>
+    <section class="tables full-row">
+      <h2>Request</h2>
+      <div id="reqTable"></div>
+      <h2>Best Response</h2>
+      <div id="respTable"></div>
+      <h2>Merged</h2>
+      <div id="mergeTable"></div>
+    </section>
+  </main>
+</body>
+</html>
+
+
+
