@@ -78,7 +78,15 @@ cd pipeline_demo/extractor
 python batch_processor_enhanced.py --max-workers 2
 ```
 
-### 3) Pricing API + UI
+### 3) Extractor UI (overall process)
+```bash
+cd pipeline_demo/i2j_ui
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+Open `http://127.0.0.1:8000/`.
+
+### 4) Pricing API + UI
 ```bash
 cd pipeline_demo/pricing_api
 pip install -r requirements.txt
