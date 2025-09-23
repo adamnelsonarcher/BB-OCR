@@ -34,6 +34,12 @@ details.trace { margin-top: 14px; }
 .trace-grid { display:grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
 .trace-grid h3 { margin: 10px 0 6px 0; font-size: 14px; color:#7dd3fc; }
 #trace-images img { max-width: 100%; height: auto; border:1px solid #223042; margin: 6px 0; display:block; }
+.thumb-row { display:flex; gap: 12px; align-items:flex-start; margin: 6px 0; }
+.thumb { max-width: 180px; border:1px solid #223042; }
+.thumb-col { display:flex; flex-direction:column; gap:6px; min-width: 200px; }
+.thumb-label { font-size: 12px; color:#7dd3fc; }
+.ocr-col { flex: 1; }
+.ocr-box { max-height: 180px; overflow:auto; border:1px solid #223042; background:#0b0f14; padding:8px; white-space: pre; }
 .scroll { max-height: 260px; overflow:auto; border:1px solid #223042; background:#0b0f14; padding:10px; }
 .hscroll { overflow-x: auto; white-space: pre; }
 

@@ -127,28 +127,43 @@ function renderTrace(metadata) {
     traceJsonEl.textContent = '';
     return;
   }
-  // images
+  // images with before/after + OCR text per row
   traceImagesEl.innerHTML = '';
   const images = Array.isArray(t.images) ? t.images : [];
   images.forEach((img, idx) => {
-    const wrap = document.createElement('div');
+    const row = document.createElement('div');
+    row.className = 'thumb-row';
     const title = document.createElement('div');
     title.textContent = `Image ${idx+1}`;
     title.style.color = '#9fb3c8';
-    const order = ['original_b64','preprocessed_b64','edge_cropped_b64','auto_cropped_b64'];
-    wrap.appendChild(title);
-    order.forEach(key => {
-      if (img && img[key]) {
-        const lab = document.createElement('div');
-        lab.textContent = key.replace('_b64','').replace('_',' ');
-        lab.style.fontSize = '12px'; lab.style.color = '#7dd3fc';
-        const im = document.createElement('img');
-        im.src = img[key];
-        wrap.appendChild(lab);
-        wrap.appendChild(im);
-      }
-    });
-    traceImagesEl.appendChild(wrap);
+    title.style.minWidth = '80px';
+    row.appendChild(title);
+    const colImgs = document.createElement('div');
+    colImgs.className = 'thumb-col';
+    const addThumb = (label, b64) => {
+      if (!b64) return;
+      const lab = document.createElement('div');
+      lab.className = 'thumb-label';
+      lab.textContent = label;
+      const im = document.createElement('img');
+      im.className = 'thumb';
+      im.src = b64;
+      colImgs.appendChild(lab);
+      colImgs.appendChild(im);
+    };
+    addThumb('original', img && img.original_b64);
+    addThumb('preprocessed', img && img.preprocessed_b64);
+    addThumb('edge crop', img && img.edge_cropped_b64);
+    addThumb('auto crop', img && img.auto_cropped_b64);
+    row.appendChild(colImgs);
+    const colOcr = document.createElement('div');
+    colOcr.className = 'ocr-col';
+    const ocrBox = document.createElement('div');
+    ocrBox.className = 'ocr-box hscroll';
+    ocrBox.textContent = (img && img.ocr_text) ? img.ocr_text : '';
+    colOcr.appendChild(ocrBox);
+    row.appendChild(colOcr);
+    traceImagesEl.appendChild(row);
   });
   // OCR texts
   let ocrTexts = [];
@@ -246,16 +261,18 @@ async function processSingle(blob, filename = 'capture.jpg') {
         setTimeout(pollResult, 600);
         return;
       }
-      if (!r.ok) {
+      if (j && j.status === 'error') {
         statusEl.textContent = 'Error';
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
         return;
       }
-      statusEl.textContent = `Processed: ${j.files.join(', ')}`;
-      metaTable.innerHTML = renderTable(j.metadata);
-      renderTrace(j.metadata);
-      actions.classList.remove('hidden');
+      if (r.ok && j && j.status === 'done') {
+        statusEl.textContent = `Processed: ${j.files.join(', ')}`;
+        metaTable.innerHTML = renderTable(j.metadata);
+        renderTrace(j.metadata);
+        actions.classList.remove('hidden');
+      }
     } catch (e) {}
   })();
 }
@@ -296,16 +313,18 @@ async function processBatch(blobs) {
         setTimeout(pollResult, 600);
         return;
       }
-      if (!r.ok) {
+      if (j && j.status === 'error') {
         statusEl.textContent = 'Error';
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
         return;
       }
-      statusEl.textContent = `Processed: ${j.files.join(', ')}`;
-      metaTable.innerHTML = renderTable(j.metadata);
-      renderTrace(j.metadata);
-      actions.classList.remove('hidden');
+      if (r.ok && j && j.status === 'done') {
+        statusEl.textContent = `Processed: ${j.files.join(', ')}`;
+        metaTable.innerHTML = renderTable(j.metadata);
+        renderTrace(j.metadata);
+        actions.classList.remove('hidden');
+      }
     } catch (e) {}
   })();
 }

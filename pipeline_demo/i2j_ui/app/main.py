@@ -76,9 +76,12 @@ async def job_result(id: str):
         job = _JOBS.get(id)
         if not job:
             return JSONResponse(status_code=404, content={"error": "job not found"})
-        if job.get("status") != "done":
-            return JSONResponse(status_code=202, content={"status": job.get("status")})
-        return {"id": id, "metadata": job.get("metadata"), "files": job.get("files", [])}
+        status = job.get("status")
+        if status == "error":
+            return {"id": id, "status": status, "error": job.get("error"), "files": job.get("files", [])}
+        if status != "done":
+            return JSONResponse(status_code=202, content={"status": status})
+        return {"id": id, "status": status, "metadata": job.get("metadata"), "files": job.get("files", [])}
 
 def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool) -> None:
     with _JOBS_LOCK:
@@ -159,7 +162,9 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 			ocr_engine=ocr_engine,
 			use_preprocessing=use_preprocessing,
 			edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
-			crop_for_ocr=bool(auto_crop)
+			crop_for_ocr=bool(auto_crop),
+			warm_model=False,
+			ollama_timeout_seconds=45.0,
 		)
 	except Exception:
 		# Fallback to tesseract if easyocr fails to init
@@ -169,7 +174,9 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 				ocr_engine="tesseract",
 				use_preprocessing=use_preprocessing,
 				edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
-				crop_for_ocr=bool(auto_crop)
+				crop_for_ocr=bool(auto_crop),
+				warm_model=False,
+				ollama_timeout_seconds=45.0,
 			)
 		raise
 
