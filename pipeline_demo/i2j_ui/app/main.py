@@ -10,6 +10,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import requests
+import threading
+from typing import Callable
 
 # Resolve path to the OCR/LLM pipeline (pipeline_demo/extractor)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -38,6 +40,26 @@ for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR]:
 	os.makedirs(d, exist_ok=True)
 
 app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
+# In-memory trace streams per job id
+_TRACE_LOCK = threading.Lock()
+_TRACE_STREAMS: Dict[str, list] = {}
+
+def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
+    def _sink(trace: dict) -> None:
+        with _TRACE_LOCK:
+            _TRACE_STREAMS.setdefault(job_id, []).append({
+                "ts": int(time.time() * 1000),
+                "trace": trace,
+            })
+    return _sink
+
+@app.get("/api/trace_poll")
+async def trace_poll(id: str, last_ts: int = 0):
+    with _TRACE_LOCK:
+        items = _TRACE_STREAMS.get(id, [])
+        new_items = [it for it in items if it.get("ts", 0) > last_ts]
+    return {"items": new_items, "count": len(new_items)}
+
 
 # CORS for local use
 app.add_middleware(
@@ -170,7 +192,8 @@ async def process_image(
 	# Run pipeline on the single image, ensure OCR on that image
 	try:
 		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
-		metadata = extractor.extract_metadata_from_images([saved_path], ocr_image_indices=[0], capture_trace=True)
+		trace_sink = _make_trace_sink(item_id)
+		metadata = extractor.extract_metadata_from_images([saved_path], ocr_image_indices=[0], capture_trace=True, trace_sink=trace_sink)
 	except Exception as e:
 		return JSONResponse(status_code=500, content={
 			"id": item_id,
@@ -210,7 +233,8 @@ async def process_images(
 	try:
 		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
 		ocr_indices = _compute_default_ocr_indices(len(saved_paths))
-		metadata = extractor.extract_metadata_from_images(saved_paths, ocr_image_indices=ocr_indices, capture_trace=True)
+		trace_sink = _make_trace_sink(item_id)
+		metadata = extractor.extract_metadata_from_images(saved_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
 	except Exception as e:
 		return JSONResponse(status_code=500, content={
 			"id": item_id,
@@ -272,7 +296,8 @@ async def process_example(payload: ExamplePayload):
 	try:
 		extractor = _build_extractor(model=payload.model or "gemma3:4b", ocr_engine=payload.ocr_engine or "easyocr", use_preprocessing=bool(payload.use_preprocessing))
 		ocr_indices = _compute_default_ocr_indices(len(image_paths))
-		metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True)
+		trace_sink = _make_trace_sink(f"example_{payload.book_id}")
+		metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
 

@@ -14,6 +14,7 @@ const traceOcrTextEl = document.getElementById('trace-ocr-text');
 const traceOcrJsonEl = document.getElementById('trace-ocr-json');
 const tracePromptEl = document.getElementById('trace-prompt');
 const traceVlmEl = document.getElementById('trace-vlm');
+const traceStepsEl = document.getElementById('trace-steps');
 const btnAccept = document.getElementById('accept');
 const btnReject = document.getElementById('reject');
 const btnPricing = document.getElementById('pricing');
@@ -29,6 +30,7 @@ const edgeCropRange = document.getElementById('edge-crop');
 const edgeCropVal = document.getElementById('edge-crop-val');
 const autoCropChk = document.getElementById('auto-crop');
 const overlayBox = document.querySelector('.overlay-box');
+let pollTimer = null;
 
 let lastId = null;
 let captureQueue = []; // Array of Blobs
@@ -120,6 +122,7 @@ function renderTrace(metadata) {
     traceOcrJsonEl.textContent = '';
     tracePromptEl.textContent = '';
     traceVlmEl.textContent = '';
+    traceStepsEl.innerHTML = '';
     return;
   }
   // images
@@ -154,6 +157,28 @@ function renderTrace(metadata) {
   // prompt/raw
   tracePromptEl.textContent = t.enhanced_prompt || '';
   traceVlmEl.textContent = t.ollama_raw || '';
+  // steps feed
+  const steps = Array.isArray(t.steps) ? t.steps : [];
+  traceStepsEl.innerHTML = steps.map((s, i) => {
+    const info = s.info ? escapeHtml(JSON.stringify(s.info)) : '';
+    return `<div>[${String(i+1).padStart(2,'0')}] ${escapeHtml(s.step || '')} ${info}</div>`;
+  }).join('\n');
+}
+
+function startTracePolling(id) {
+  let lastTs = 0;
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(`/api/trace_poll?id=${encodeURIComponent(id)}&last_ts=${lastTs}`);
+      const data = await resp.json();
+      const items = data.items || [];
+      if (!items.length) return;
+      lastTs = Math.max(lastTs, ...items.map(it => it.ts || 0));
+      const latest = items[items.length - 1].trace;
+      renderTrace({ _trace: latest });
+    } catch {}
+  }, 500);
 }
 
 function escapeHtml(s) {
@@ -210,6 +235,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
   metaTable.innerHTML = renderTable(data.metadata);
   renderTrace(data.metadata);
   actions.classList.remove('hidden');
+  if (lastId) startTracePolling(lastId);
 }
 
 async function processBatch(blobs) {
@@ -242,6 +268,7 @@ async function processBatch(blobs) {
   metaTable.innerHTML = renderTable(data.metadata);
   renderTrace(data.metadata);
   actions.classList.remove('hidden');
+  if (lastId) startTracePolling(lastId);
 }
 
 btnCapture.addEventListener('click', async () => {
@@ -308,6 +335,7 @@ btnRunExample.addEventListener('click', async () => {
   metaTable.innerHTML = renderTable(data.metadata);
   renderTrace(data.metadata);
   actions.classList.remove('hidden');
+  if (lastId) startTracePolling(lastId);
 });
 
 btnLoadExampleOutput.addEventListener('click', async () => {
