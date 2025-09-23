@@ -43,6 +43,8 @@ app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
 # In-memory trace streams per job id
 _TRACE_LOCK = threading.Lock()
 _TRACE_STREAMS: Dict[str, list] = {}
+_JOBS_LOCK = threading.Lock()
+_JOBS: Dict[str, Dict[str, Any]] = {}
 
 def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
     def _sink(trace: dict) -> None:
@@ -59,6 +61,38 @@ async def trace_poll(id: str, last_ts: int = 0):
         items = _TRACE_STREAMS.get(id, [])
         new_items = [it for it in items if it.get("ts", 0) > last_ts]
     return {"items": new_items, "count": len(new_items)}
+
+@app.get("/api/job_status")
+async def job_status(id: str):
+    with _JOBS_LOCK:
+        job = _JOBS.get(id)
+        if not job:
+            return {"id": id, "status": "unknown"}
+        return {"id": id, "status": job.get("status"), "error": job.get("error")}
+
+@app.get("/api/job_result")
+async def job_result(id: str):
+    with _JOBS_LOCK:
+        job = _JOBS.get(id)
+        if not job:
+            return JSONResponse(status_code=404, content={"error": "job not found"})
+        if job.get("status") != "done":
+            return JSONResponse(status_code=202, content={"status": job.get("status")})
+        return {"id": id, "metadata": job.get("metadata"), "files": job.get("files", [])}
+
+def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool) -> None:
+    with _JOBS_LOCK:
+        _JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
+    try:
+        extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
+        trace_sink = _make_trace_sink(job_id)
+        ocr_indices = _compute_default_ocr_indices(len(image_paths))
+        metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
+        with _JOBS_LOCK:
+            _JOBS[job_id].update({"status": "done", "metadata": metadata})
+    except Exception as e:
+        with _JOBS_LOCK:
+            _JOBS[job_id].update({"status": "error", "error": str(e)})
 
 
 # CORS for local use
@@ -189,22 +223,14 @@ async def process_image(
 	with open(saved_path, "wb") as f:
 		f.write(await image.read())
 
-	# Run pipeline on the single image, ensure OCR on that image
-	try:
-		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
-		trace_sink = _make_trace_sink(item_id)
-		metadata = extractor.extract_metadata_from_images([saved_path], ocr_image_indices=[0], capture_trace=True, trace_sink=trace_sink)
-	except Exception as e:
-		return JSONResponse(status_code=500, content={
-			"id": item_id,
-			"error": str(e),
-		})
-
-	return {
-		"id": item_id,
-		"files": [os.path.basename(saved_path)],
-		"metadata": metadata,
-	}
+	# Start background job and return immediately
+	t = threading.Thread(target=_run_extractor_job, args=(item_id, [saved_path]), kwargs={
+		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr)
+	}, daemon=True)
+	t.start()
+	with _JOBS_LOCK:
+		_JOBS[item_id] = {"status": "queued", "files": [os.path.basename(saved_path)]}
+	return {"id": item_id, "files": [os.path.basename(saved_path)], "status": "started"}
 
 
 @app.post("/api/process_images")
@@ -230,22 +256,14 @@ async def process_images(
 			f.write(await uf.read())
 		saved_paths.append(path)
 
-	try:
-		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
-		ocr_indices = _compute_default_ocr_indices(len(saved_paths))
-		trace_sink = _make_trace_sink(item_id)
-		metadata = extractor.extract_metadata_from_images(saved_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
-	except Exception as e:
-		return JSONResponse(status_code=500, content={
-			"id": item_id,
-			"error": str(e),
-		})
-
-	return {
-		"id": item_id,
-		"files": [os.path.basename(p) for p in saved_paths],
-		"metadata": metadata,
-	}
+	# Start background job and return immediately
+	t = threading.Thread(target=_run_extractor_job, args=(item_id, saved_paths), kwargs={
+		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr)
+	}, daemon=True)
+	t.start()
+	with _JOBS_LOCK:
+		_JOBS[item_id] = {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]}
+	return {"id": item_id, "files": [os.path.basename(p) for p in saved_paths], "status": "started"}
 
 
 @app.get("/api/examples")
@@ -293,19 +311,15 @@ async def process_example(payload: ExamplePayload):
 	if not image_paths:
 		raise HTTPException(status_code=400, detail="No images in example directory")
 
-	try:
-		extractor = _build_extractor(model=payload.model or "gemma3:4b", ocr_engine=payload.ocr_engine or "easyocr", use_preprocessing=bool(payload.use_preprocessing))
-		ocr_indices = _compute_default_ocr_indices(len(image_paths))
-		trace_sink = _make_trace_sink(f"example_{payload.book_id}")
-		metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
-	except Exception as e:
-		raise HTTPException(status_code=500, detail=str(e))
-
-	return {
-		"id": f"example_{payload.book_id}",
-		"files": [os.path.basename(p) for p in image_paths],
-		"metadata": metadata,
-	}
+	# Background job for example
+	job_id = f"example_{payload.book_id}"
+	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
+		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': 0.0, 'crop_ocr': False
+	}, daemon=True)
+	t.start()
+	with _JOBS_LOCK:
+		_JOBS[job_id] = {"status": "queued", "files": [os.path.basename(p) for p in image_paths]}
+	return {"id": job_id, "files": [os.path.basename(p) for p in image_paths], "status": "started"}
 
 
 @app.get("/api/example_output")

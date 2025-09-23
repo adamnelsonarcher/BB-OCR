@@ -459,6 +459,7 @@ class EnhancedBookMetadataExtractor:
             # seed per-image trace with originals
             for p in image_paths:
                 trace["images"].append({"original_b64": self._image_to_data_url(p)})
+            trace["steps"].append({"step": "seed_images", "info": {"count": len(image_paths)}})
             self._emit_trace(trace)
         
         
@@ -470,6 +471,9 @@ class EnhancedBookMetadataExtractor:
         for idx in ocr_image_indices:
             if 0 <= idx < len(image_paths):
                 print(f"\n📖 Processing OCR for image {idx + 1}: {os.path.basename(image_paths[idx])}")
+                if capture_trace:
+                    trace["steps"].append({"step": "start_ocr", "image_index": idx})
+                    self._emit_trace(trace)
                 trace_img_dict = trace["images"][idx] if capture_trace else None
                 step_log = trace.get("steps") if capture_trace else None
                 ocr_text = self.extract_text_with_ocr(image_paths[idx], trace_image=trace_img_dict, trace_global=trace if capture_trace else None, step_log=step_log)
@@ -501,6 +505,9 @@ class EnhancedBookMetadataExtractor:
             encoded = self.encode_image(img_path)
             images.append(encoded)
             print(f"      ✓ Encoded ({len(encoded)} characters)")
+        if capture_trace:
+            trace["steps"].append({"step": "encode_images", "info": {"count": len(images)}})
+            self._emit_trace(trace)
         
         # Create the request payload
         payload = {
@@ -518,6 +525,9 @@ class EnhancedBookMetadataExtractor:
         
         
         # Send request to Ollama
+        if capture_trace:
+            trace["steps"].append({"step": "request_sent", "info": {"model": self.model}})
+            self._emit_trace(trace)
         response = self.session.post(self.ollama_url, json=payload)
         
         if response.status_code != 200:

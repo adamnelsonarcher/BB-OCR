@@ -15,6 +15,7 @@ const traceOcrJsonEl = document.getElementById('trace-ocr-json');
 const tracePromptEl = document.getElementById('trace-prompt');
 const traceVlmEl = document.getElementById('trace-vlm');
 const traceStepsEl = document.getElementById('trace-steps');
+const traceJsonEl = document.getElementById('trace-json');
 const btnAccept = document.getElementById('accept');
 const btnReject = document.getElementById('reject');
 const btnPricing = document.getElementById('pricing');
@@ -123,6 +124,7 @@ function renderTrace(metadata) {
     tracePromptEl.textContent = '';
     traceVlmEl.textContent = '';
     traceStepsEl.innerHTML = '';
+    traceJsonEl.textContent = '';
     return;
   }
   // images
@@ -163,6 +165,8 @@ function renderTrace(metadata) {
     const info = s.info ? escapeHtml(JSON.stringify(s.info)) : '';
     return `<div>[${String(i+1).padStart(2,'0')}] ${escapeHtml(s.step || '')} ${info}</div>`;
   }).join('\n');
+  // raw trace JSON
+  try { traceJsonEl.textContent = JSON.stringify(t, null, 2); } catch { traceJsonEl.textContent = ''; }
 }
 
 function startTracePolling(id) {
@@ -231,11 +235,29 @@ async function processSingle(blob, filename = 'capture.jpg') {
   }
 
   lastId = data.id;
-  statusEl.textContent = `Processed: ${data.files.join(', ')}`;
-  metaTable.innerHTML = renderTable(data.metadata);
-  renderTrace(data.metadata);
-  actions.classList.remove('hidden');
+  statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
+  // poll result until done
+  (async function pollResult() {
+    try {
+      const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
+      const j = await r.json();
+      if (r.status === 202) {
+        setTimeout(pollResult, 600);
+        return;
+      }
+      if (!r.ok) {
+        statusEl.textContent = 'Error';
+        errorEl.textContent = j.error || 'Unknown error';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      statusEl.textContent = `Processed: ${j.files.join(', ')}`;
+      metaTable.innerHTML = renderTable(j.metadata);
+      renderTrace(j.metadata);
+      actions.classList.remove('hidden');
+    } catch (e) {}
+  })();
 }
 
 async function processBatch(blobs) {
@@ -264,11 +286,28 @@ async function processBatch(blobs) {
   }
 
   lastId = data.id;
-  statusEl.textContent = `Processed: ${data.files.join(', ')}`;
-  metaTable.innerHTML = renderTable(data.metadata);
-  renderTrace(data.metadata);
-  actions.classList.remove('hidden');
+  statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
+  (async function pollResult() {
+    try {
+      const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
+      const j = await r.json();
+      if (r.status === 202) {
+        setTimeout(pollResult, 600);
+        return;
+      }
+      if (!r.ok) {
+        statusEl.textContent = 'Error';
+        errorEl.textContent = j.error || 'Unknown error';
+        errorEl.classList.remove('hidden');
+        return;
+      }
+      statusEl.textContent = `Processed: ${j.files.join(', ')}`;
+      metaTable.innerHTML = renderTable(j.metadata);
+      renderTrace(j.metadata);
+      actions.classList.remove('hidden');
+    } catch (e) {}
+  })();
 }
 
 btnCapture.addEventListener('click', async () => {
