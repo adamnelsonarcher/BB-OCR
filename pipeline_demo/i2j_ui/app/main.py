@@ -48,6 +48,7 @@ _TRACE_STREAMS: Dict[str, list] = {}
 _TRACE_SEQ: Dict[str, int] = {}
 _JOBS_LOCK = threading.Lock()
 _JOBS: Dict[str, Dict[str, Any]] = {}
+_JOB_SEM = threading.BoundedSemaphore(1)
 
 # In-memory console log streams per job id
 _LOG_LOCK = threading.Lock()
@@ -164,6 +165,9 @@ async def trace_poll(id: str, last_ts: int = 0, last_seq: int = -1):
             new_items = [it for it in items if it.get("seq", -1) > last_seq]
         else:
             new_items = [it for it in items if it.get("ts", 0) > last_ts]
+        # cap per response to avoid flooding
+        if len(new_items) > 100:
+            new_items = new_items[-100:]
     return {"items": new_items, "count": len(new_items)}
 
 @app.get("/api/log_poll")
@@ -174,6 +178,9 @@ async def log_poll(id: str, last_ts: int = 0, last_seq: int = -1):
             new_items = [it for it in items if it.get("seq", -1) > last_seq]
         else:
             new_items = [it for it in items if it.get("ts", 0) > last_ts]
+        # cap per response to avoid flooding
+        if len(new_items) > 100:
+            new_items = new_items[-100:]
     return {"items": new_items, "count": len(new_items)}
 
 @app.get("/api/job_status")
@@ -198,38 +205,44 @@ async def job_result(id: str):
         return {"id": id, "status": status, "metadata": job.get("metadata"), "files": job.get("files", [])}
 
 def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool) -> None:
-    with _JOBS_LOCK:
-        _JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
-    try:
-        # Prepare sinks
-        trace_sink = _make_trace_sink(job_id)
-        with _LOG_LOCK:
-            _LOG_STREAMS.setdefault(job_id, [])
-        # Tee stdout/stderr to per-job log stream
-        _orig_out, _orig_err = sys.stdout, sys.stderr
-        sys.stdout = _JobLogTee(_orig_out, job_id)
-        sys.stderr = _JobLogTee(_orig_err, job_id)
-        try:
-            extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
-            ocr_indices = _compute_default_ocr_indices(len(image_paths))
-            metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
-        finally:
-            sys.stdout = _orig_out
-            sys.stderr = _orig_err
-        with _JOBS_LOCK:
-            _JOBS[job_id].update({"status": "done", "metadata": metadata})
-    except Exception as e:
-        with _JOBS_LOCK:
-            _JOBS[job_id].update({"status": "error", "error": str(e)})
-    # Trim stored streams to avoid unbounded growth
-    with _TRACE_LOCK:
-        items = _TRACE_STREAMS.get(job_id, [])
-        if len(items) > 200:
-            _TRACE_STREAMS[job_id] = items[-200:]
-    with _LOG_LOCK:
-        logs = _LOG_STREAMS.get(job_id, [])
-        if len(logs) > 1000:
-            _LOG_STREAMS[job_id] = logs[-1000:]
+	_JOB_SEM.acquire()
+	try:
+		with _JOBS_LOCK:
+			_JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
+		# Prepare sinks
+		trace_sink = _make_trace_sink(job_id)
+		with _LOG_LOCK:
+			_LOG_STREAMS.setdefault(job_id, [])
+		# Tee stdout/stderr to per-job log stream
+		_orig_out, _orig_err = sys.stdout, sys.stderr
+		sys.stdout = _JobLogTee(_orig_out, job_id)
+		sys.stderr = _JobLogTee(_orig_err, job_id)
+		try:
+			extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
+			ocr_indices = _compute_default_ocr_indices(len(image_paths))
+			metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
+		finally:
+			sys.stdout = _orig_out
+			sys.stderr = _orig_err
+		with _JOBS_LOCK:
+			_JOBS[job_id].update({"status": "done", "metadata": metadata})
+	except Exception as e:
+		with _JOBS_LOCK:
+			_JOBS[job_id].update({"status": "error", "error": str(e)})
+	finally:
+		# Trim stored streams to avoid unbounded growth and release semaphore
+		with _TRACE_LOCK:
+			items = _TRACE_STREAMS.get(job_id, [])
+			if len(items) > 200:
+				_TRACE_STREAMS[job_id] = items[-200:]
+		with _LOG_LOCK:
+			logs = _LOG_STREAMS.get(job_id, [])
+			if len(logs) > 1000:
+				_LOG_STREAMS[job_id] = logs[-1000:]
+		try:
+			_JOB_SEM.release()
+		except Exception:
+			pass
 
 
 # CORS for local use
@@ -387,6 +400,13 @@ async def process_image(
 	with open(saved_path, "wb") as f:
 		f.write(await image.read())
 
+	# Reset any prior streams for this id (unlikely for unique ids)
+	with _TRACE_LOCK:
+		_TRACE_STREAMS[item_id] = []
+		_TRACE_SEQ[item_id] = 0
+	with _LOG_LOCK:
+		_LOG_STREAMS[item_id] = []
+		_LOG_SEQ[item_id] = 0
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, [saved_path]), kwargs={
 		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr)
@@ -423,6 +443,13 @@ async def process_images(
 			f.write(await uf.read())
 		saved_paths.append(path)
 
+	# Reset any prior streams for this id (unlikely for unique ids)
+	with _TRACE_LOCK:
+		_TRACE_STREAMS[item_id] = []
+		_TRACE_SEQ[item_id] = 0
+	with _LOG_LOCK:
+		_LOG_STREAMS[item_id] = []
+		_LOG_SEQ[item_id] = 0
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, saved_paths), kwargs={
 		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr)
@@ -482,6 +509,18 @@ async def process_example(payload: ExamplePayload):
 
 	# Background job for example
 	job_id = f"example_{payload.book_id}"
+	# If a job with same id is already running, don't start again
+	with _JOBS_LOCK:
+		existing = _JOBS.get(job_id)
+		if existing and existing.get("status") in ("running", "queued"):
+			return {"id": job_id, "files": existing.get("files", []), "status": existing.get("status")}
+	# Reset streams for new run
+	with _TRACE_LOCK:
+		_TRACE_STREAMS[job_id] = []
+		_TRACE_SEQ[job_id] = 0
+	with _LOG_LOCK:
+		_LOG_STREAMS[job_id] = []
+		_LOG_SEQ[job_id] = 0
 	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
 		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False)
 	}, daemon=True)

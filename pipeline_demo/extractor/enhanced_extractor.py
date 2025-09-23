@@ -295,10 +295,19 @@ class EnhancedBookMetadataExtractor:
         cv2.imwrite(out_path, cropped)
         return out_path
     
-    def encode_image(self, image_path: str) -> str:
-        """Encode an image to base64."""
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
+    def _encode_image_for_model(self, image_path: str, *, max_dim: int = 1600, jpeg_quality: int = 85) -> str:
+        """Encode image to base64 for model: downscale to max_dim and compress to JPEG."""
+        try:
+            img = Image.open(image_path).convert("RGB")
+            img.thumbnail((max_dim, max_dim))
+            from io import BytesIO
+            buf = BytesIO()
+            img.save(buf, format="JPEG", quality=int(max(50, min(95, jpeg_quality))))
+            data = buf.getvalue()
+            return base64.b64encode(data).decode("utf-8")
+        except Exception:
+            with open(image_path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
     
     def extract_text_with_ocr(self, image_path: str, trace_image: Optional[Dict[str, Any]] = None, trace_global: Optional[Dict[str, Any]] = None, *, step_log: Optional[List[Dict[str, Any]]] = None) -> str:
         """Extract text from an image using OCR and return text only."""
@@ -573,7 +582,7 @@ class EnhancedBookMetadataExtractor:
         images = []
         for i, img_path in enumerate(image_paths, 1):
             print(f"   📷 Encoding image {i}: {os.path.basename(img_path)}")
-            encoded = self.encode_image(img_path)
+            encoded = self._encode_image_for_model(img_path)
             images.append(encoded)
             print(f"      ✓ Encoded ({len(encoded)} characters)")
         if capture_trace:
@@ -599,7 +608,27 @@ class EnhancedBookMetadataExtractor:
         if capture_trace:
             trace["steps"].append({"step": "request_sent", "info": {"model": self.model}})
             self._emit_trace(trace)
-        response = self.session.post(self.ollama_url, json=payload, timeout=self.ollama_timeout_seconds)
+        # Robust request with retries/backoff to avoid hanging forever
+        response = None
+        last_err: Optional[Exception] = None
+        for attempt in range(3):
+            try:
+                response = self.session.post(self.ollama_url, json=payload, timeout=self.ollama_timeout_seconds)
+                if response.status_code == 200:
+                    break
+                else:
+                    raise Exception(f"Ollama HTTP {response.status_code}")
+            except Exception as e:
+                last_err = e
+                wait = 1.0 * (attempt + 1)
+                print(f"   ⚠️ Ollama request failed (attempt {attempt+1}/3): {e}; retrying in {wait:.1f}s")
+                try:
+                    import time as _t
+                    _t.sleep(wait)
+                except Exception:
+                    pass
+        if response is None or response.status_code != 200:
+            raise Exception(f"Error from Ollama API: {last_err}")
         
         if response.status_code != 200:
             print(f"❌ Ollama API error: {response.status_code}")
@@ -608,7 +637,12 @@ class EnhancedBookMetadataExtractor:
         print(f"✅ Received response from Ollama")
         
         # Extract the response
-        result = response.json()
+        # Guard against malformed/streaming artifacts
+        try:
+            result = response.json()
+        except Exception as e:
+            txt = response.text[:2000]
+            raise Exception(f"Failed to parse Ollama JSON: {e}; prefix=\n{txt}")
         response_text = result.get("response", "")
         
         print(f"\n📄 OLLAMA RAW RESPONSE:")
