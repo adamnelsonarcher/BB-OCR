@@ -62,7 +62,7 @@ def _processed_dirs() -> List[str]:
     candidates = [
         os.path.join(REPO_ROOT, "extractor", "output"),
         os.path.join(REPO_ROOT, "extractor", "batch_output"),
-        os.path.join(REPO_ROOT, "..", "i2j_ui", "data", "accepted"),
+        os.path.join(REPO_ROOT, "i2j_ui", "data", "accepted"),
     ]
     return [d for d in candidates if os.path.isdir(d)]
 
