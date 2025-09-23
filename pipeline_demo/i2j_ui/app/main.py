@@ -170,7 +170,7 @@ async def process_image(
 	# Run pipeline on the single image, ensure OCR on that image
 	try:
 		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
-		metadata = extractor.extract_metadata_from_images([saved_path], ocr_image_indices=[0])
+		metadata = extractor.extract_metadata_from_images([saved_path], ocr_image_indices=[0], capture_trace=True)
 	except Exception as e:
 		return JSONResponse(status_code=500, content={
 			"id": item_id,
@@ -210,7 +210,7 @@ async def process_images(
 	try:
 		extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
 		ocr_indices = _compute_default_ocr_indices(len(saved_paths))
-		metadata = extractor.extract_metadata_from_images(saved_paths, ocr_image_indices=ocr_indices)
+		metadata = extractor.extract_metadata_from_images(saved_paths, ocr_image_indices=ocr_indices, capture_trace=True)
 	except Exception as e:
 		return JSONResponse(status_code=500, content={
 			"id": item_id,
@@ -272,7 +272,7 @@ async def process_example(payload: ExamplePayload):
 	try:
 		extractor = _build_extractor(model=payload.model or "gemma3:4b", ocr_engine=payload.ocr_engine or "easyocr", use_preprocessing=bool(payload.use_preprocessing))
 		ocr_indices = _compute_default_ocr_indices(len(image_paths))
-		metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices)
+		metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True)
 	except Exception as e:
 		raise HTTPException(status_code=500, detail=str(e))
 

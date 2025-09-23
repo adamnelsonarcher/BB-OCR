@@ -8,6 +8,12 @@ const statusEl = document.getElementById('status');
 const errorEl = document.getElementById('error');
 const metaTable = document.getElementById('meta-table');
 const actions = document.getElementById('actions');
+const traceEl = document.getElementById('trace');
+const traceImagesEl = document.getElementById('trace-images');
+const traceOcrTextEl = document.getElementById('trace-ocr-text');
+const traceOcrJsonEl = document.getElementById('trace-ocr-json');
+const tracePromptEl = document.getElementById('trace-prompt');
+const traceVlmEl = document.getElementById('trace-vlm');
 const btnAccept = document.getElementById('accept');
 const btnReject = document.getElementById('reject');
 const btnPricing = document.getElementById('pricing');
@@ -106,6 +112,50 @@ function renderTable(obj) {
   return `<table class="kv"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+function renderTrace(metadata) {
+  const t = (metadata && metadata._trace) ? metadata._trace : null;
+  if (!t) {
+    traceImagesEl.innerHTML = '';
+    traceOcrTextEl.textContent = '';
+    traceOcrJsonEl.textContent = '';
+    tracePromptEl.textContent = '';
+    traceVlmEl.textContent = '';
+    return;
+  }
+  // images
+  traceImagesEl.innerHTML = '';
+  const images = Array.isArray(t.images) ? t.images : [];
+  images.forEach((img, idx) => {
+    const wrap = document.createElement('div');
+    const title = document.createElement('div');
+    title.textContent = `Image ${idx+1}`;
+    title.style.color = '#9fb3c8';
+    const order = ['original_b64','preprocessed_b64','edge_cropped_b64','auto_cropped_b64'];
+    wrap.appendChild(title);
+    order.forEach(key => {
+      if (img && img[key]) {
+        const lab = document.createElement('div');
+        lab.textContent = key.replace('_b64','').replace('_',' ');
+        lab.style.fontSize = '12px'; lab.style.color = '#7dd3fc';
+        const im = document.createElement('img');
+        im.src = img[key];
+        wrap.appendChild(lab);
+        wrap.appendChild(im);
+      }
+    });
+    traceImagesEl.appendChild(wrap);
+  });
+  // OCR texts
+  let ocrTexts = [];
+  images.forEach(img => { if (img && img.ocr_text) ocrTexts.push(img.ocr_text); });
+  traceOcrTextEl.textContent = ocrTexts.join('\n\n' + ('-'.repeat(40)) + '\n\n');
+  // OCR JSON heuristic
+  traceOcrJsonEl.textContent = t.ocr_json ? JSON.stringify(t.ocr_json, null, 2) : '';
+  // prompt/raw
+  tracePromptEl.textContent = t.enhanced_prompt || '';
+  traceVlmEl.textContent = t.ollama_raw || '';
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
@@ -158,6 +208,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
   lastId = data.id;
   statusEl.textContent = `Processed: ${data.files.join(', ')}`;
   metaTable.innerHTML = renderTable(data.metadata);
+  renderTrace(data.metadata);
   actions.classList.remove('hidden');
 }
 
@@ -189,6 +240,7 @@ async function processBatch(blobs) {
   lastId = data.id;
   statusEl.textContent = `Processed: ${data.files.join(', ')}`;
   metaTable.innerHTML = renderTable(data.metadata);
+  renderTrace(data.metadata);
   actions.classList.remove('hidden');
 }
 
@@ -254,6 +306,7 @@ btnRunExample.addEventListener('click', async () => {
   lastId = data.id;
   statusEl.textContent = `Processed example: ${id}`;
   metaTable.innerHTML = renderTable(data.metadata);
+  renderTrace(data.metadata);
   actions.classList.remove('hidden');
 });
 
@@ -277,6 +330,7 @@ btnLoadExampleOutput.addEventListener('click', async () => {
   lastId = data.id;
   statusEl.textContent = `Loaded saved output: ${data.file}`;
   metaTable.innerHTML = renderTable(data.metadata);
+  renderTrace(data.metadata);
   actions.classList.remove('hidden');
 });
 

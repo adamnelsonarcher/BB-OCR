@@ -40,6 +40,15 @@ except ImportError as e:
         """Fallback function when preprocessing is not available."""
         return image_path, output_path, ["original"]
 
+# Import simple book heuristic extractor for OCR->JSON preview
+try:
+    from hueristics.book_extractor import extract_book_metadata_from_text as _heuristic_book_extract
+    HEUR_HEURISTICS_AVAILABLE = True
+except Exception:
+    HEUR_HEURISTICS_AVAILABLE = False
+    def _heuristic_book_extract(_: str) -> Dict[str, Any]:
+        return {}
+
 # Define the JSON schema for validation
 METADATA_SCHEMA = {
     "type": "object",
@@ -134,6 +143,22 @@ class EnhancedBookMetadataExtractor:
                 self._warm_ollama_model()
             except Exception as e:
                 print(f"Warning: model warm-up skipped due to error: {e}")
+    def _image_to_data_url(self, path: str, fallback_ext: str = "png") -> Optional[str]:
+        """Read file and return data URL base64 string, or None if not found."""
+        try:
+            if not path or not os.path.exists(path):
+                return None
+            with open(path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            ext = (os.path.splitext(path)[1] or f".{fallback_ext}").lower().lstrip(".")
+            mime = {
+                "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
+                "bmp": "image/bmp", "gif": "image/gif", "tiff": "image/tiff"
+            }.get(ext, "image/png")
+            return f"data:{mime};base64,{b64}"
+        except Exception:
+            return None
+
 
     def _warm_ollama_model(self) -> None:
         """Send a tiny request to prompt the Ollama server to load the model."""
@@ -244,13 +269,15 @@ class EnhancedBookMetadataExtractor:
         with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode("utf-8")
     
-    def extract_text_with_ocr(self, image_path: str) -> str:
+    def extract_text_with_ocr(self, image_path: str, trace_image: Optional[Dict[str, Any]] = None) -> str:
         """Extract text from an image using OCR and return text only."""
         print(f"    🔍 Starting OCR processing for: {os.path.basename(image_path)}")
         
         # Apply preprocessing if enabled
         preprocessed_image_path = image_path
         temp_files_to_cleanup: List[str] = []
+        if trace_image is not None:
+            trace_image.setdefault("original_b64", self._image_to_data_url(image_path))
         if self.use_preprocessing and PREPROCESSING_AVAILABLE:
             print(f"    📝 Applying image preprocessing...")
             # Create temporary preprocessed image
@@ -264,6 +291,9 @@ class EnhancedBookMetadataExtractor:
                 _, preprocessed_image_path, steps = preprocess_for_book_cover(image_path, preprocessed_image_path)
                 print(f"    ✓ Preprocessing completed. Steps applied: {', '.join(steps)}")
                 temp_files_to_cleanup.append(preprocessed_image_path)
+                if trace_image is not None:
+                    trace_image["preprocessing_steps"] = steps
+                    trace_image["preprocessed_b64"] = self._image_to_data_url(preprocessed_image_path)
             except Exception as e:
                 print(f"    ⚠️  Preprocessing failed for {image_path}: {e}")
                 preprocessed_image_path = image_path
@@ -282,6 +312,8 @@ class EnhancedBookMetadataExtractor:
                     crop_image_path = central
                     temp_files_to_cleanup.append(central)
                     print(f"    ✂️  Edge-cropped image for OCR: {os.path.basename(central)} ({self.edge_crop_percent:.1f}%)")
+                    if trace_image is not None:
+                        trace_image["edge_cropped_b64"] = self._image_to_data_url(central)
             except Exception as e:
                 print(f"    ⚠️  Edge-cropping failed: {e}")
         # If no edge crop or still using original, optionally try auto-crop of text region
@@ -292,6 +324,8 @@ class EnhancedBookMetadataExtractor:
                     crop_image_path = cropped
                     temp_files_to_cleanup.append(cropped)
                     print(f"    ✂️  Auto-cropped image for OCR: {os.path.basename(cropped)}")
+                    if trace_image is not None:
+                        trace_image["auto_cropped_b64"] = self._image_to_data_url(cropped)
                 else:
                     print(f"    ⚠️  Auto-cropping produced no improvement; using original for OCR")
             except Exception as e:
@@ -315,6 +349,8 @@ class EnhancedBookMetadataExtractor:
             print(f"    ❌ OCR failed for {image_path}: {e}")
             text = ""
         
+        if trace_image is not None:
+            trace_image["ocr_text"] = text
         # Display OCR results
         if text.strip():
             print(f"    📄 OCR Text Extracted ({len(text)} characters):")
@@ -368,7 +404,7 @@ class EnhancedBookMetadataExtractor:
         
         return enhanced_prompt
     
-    def extract_metadata_from_images(self, image_paths: List[str], ocr_image_indices: List[int] = None) -> Dict[str, Any]:
+    def extract_metadata_from_images(self, image_paths: List[str], ocr_image_indices: List[int] = None, *, capture_trace: bool = False) -> Dict[str, Any]:
         """
         Extract metadata from multiple book images with OCR enhancement.
         
@@ -376,6 +412,7 @@ class EnhancedBookMetadataExtractor:
             image_paths: List of image file paths
             ocr_image_indices: List of indices (0-based) of images to run OCR on. 
                               If None, defaults to [1, 2] (2nd and 3rd images)
+            capture_trace: If True, include detailed processing trace in the result under `_trace`
         """
         if not image_paths:
             raise Exception("No image paths provided")
@@ -386,6 +423,11 @@ class EnhancedBookMetadataExtractor:
         
         # Extract OCR text from specified images
         ocr_texts = []
+        trace: Dict[str, Any] = {"images": []} if capture_trace else {}
+        if capture_trace:
+            # seed per-image trace with originals
+            for p in image_paths:
+                trace["images"].append({"original_b64": self._image_to_data_url(p)})
         
         
         print(f"\n🔍 OCR PROCESSING PHASE")
@@ -396,7 +438,8 @@ class EnhancedBookMetadataExtractor:
         for idx in ocr_image_indices:
             if 0 <= idx < len(image_paths):
                 print(f"\n📖 Processing OCR for image {idx + 1}: {os.path.basename(image_paths[idx])}")
-                ocr_text = self.extract_text_with_ocr(image_paths[idx])
+                trace_img_dict = trace["images"][idx] if capture_trace else None
+                ocr_text = self.extract_text_with_ocr(image_paths[idx], trace_image=trace_img_dict)
                 if ocr_text.strip():
                     ocr_texts.append(ocr_text)
                     print(f"    ✅ OCR text added to context")
@@ -412,6 +455,8 @@ class EnhancedBookMetadataExtractor:
         print(f"\n🤖 OLLAMA PROCESSING PHASE")
         print(f"=" * 50)
         enhanced_prompt = self.create_enhanced_prompt(ocr_texts)
+        if capture_trace:
+            trace["enhanced_prompt"] = enhanced_prompt
         
         # Encode all images for Ollama
         print(f"\n📸 Encoding {len(image_paths)} images for vision model...")
@@ -454,6 +499,8 @@ class EnhancedBookMetadataExtractor:
         print("="*80)
         print(response_text)
         print("="*80)
+        if capture_trace:
+            trace["ollama_raw"] = response_text
         
         print(f"\n🔧 PARSING RESPONSE...")
         print(f"   📏 Raw response length: {len(response_text)} characters")
@@ -503,6 +550,46 @@ class EnhancedBookMetadataExtractor:
                 "ocr_images_processed": len(ocr_texts),
                 "total_images": len(image_paths)
             }
+
+            # Add heuristic OCR-derived JSON (preview) to trace, if available
+            if capture_trace:
+                ocr_guess: Dict[str, Any] = {
+                    "title": None,
+                    "subtitle": None,
+                    "authors": [],
+                    "publisher": None,
+                    "publication_date": None,
+                    "isbn_10": None,
+                    "isbn_13": None,
+                    "price": {"currency": None, "amount": None},
+                }
+                try:
+                    for t in ocr_texts:
+                        guess = _heuristic_book_extract(t) if HEUR_HEURISTICS_AVAILABLE else {}
+                        if not guess:
+                            continue
+                        if not ocr_guess["title"] and guess.get("title"):
+                            ocr_guess["title"] = guess.get("title")
+                        author = guess.get("author")
+                        if author and author not in ocr_guess["authors"]:
+                            ocr_guess["authors"].append(author)
+                        pub = guess.get("publisher")
+                        if pub and not ocr_guess["publisher"]:
+                            ocr_guess["publisher"] = pub
+                        year = guess.get("year")
+                        if year and not ocr_guess["publication_date"]:
+                            ocr_guess["publication_date"] = year
+                        isbn = guess.get("isbn")
+                        if isbn and not (ocr_guess["isbn_10"] or ocr_guess["isbn_13"]):
+                            compact = str(isbn).replace("-", "").replace(" ", "")
+                            if len(compact) == 13:
+                                ocr_guess["isbn_13"] = compact
+                            elif len(compact) == 10:
+                                ocr_guess["isbn_10"] = compact
+                except Exception:
+                    pass
+                trace["ocr_json"] = ocr_guess
+                metadata["_trace"] = trace
             
             print(f"\n✅ EXTRACTION SUCCESSFUL!")
             print(f"📊 FINAL METADATA SUMMARY:")

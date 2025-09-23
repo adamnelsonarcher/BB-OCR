@@ -49,6 +49,25 @@
                 <div id="status" class="status">Idle</div>
                 <div id="error" class="error hidden"></div>
                 <div id="meta-table"></div>
+                <details id="trace" class="trace" open>
+                    <summary>Processing Trace</summary>
+                    <div class="trace-grid">
+                        <div>
+                            <h3>Images</h3>
+                            <div id="trace-images"></div>
+                        </div>
+                        <div>
+                            <h3>OCR Text</h3>
+                            <pre id="trace-ocr-text" class="scroll"></pre>
+                            <h3>OCR JSON (heuristic)</h3>
+                            <pre id="trace-ocr-json" class="scroll"></pre>
+                        </div>
+                    </div>
+                    <h3>Enhanced Prompt</h3>
+                    <pre id="trace-prompt" class="scroll"></pre>
+                    <h3>VLM Raw Output</h3>
+                    <pre id="trace-vlm" class="scroll"></pre>
+                </details>
                 <div class="actions hidden" id="actions">
                     <button id="accept">Accept</button>
                     <button id="reject">Reject</button>
