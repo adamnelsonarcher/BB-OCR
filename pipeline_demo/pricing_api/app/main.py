@@ -11,14 +11,15 @@ from pricing_api.core.aggregator import aggregate_offers, DEFAULT_PROVIDERS
 
 
 class LookupRequest(BaseModel):
-    title: Optional[str] = None
-    subtitle: Optional[str] = None
-    authors: Optional[List[str]] = None
-    publisher: Optional[str] = None
-    publication_date: Optional[str] = None
-    isbn_13: Optional[str] = None
-    isbn_10: Optional[str] = None
-    providers: Optional[List[str]] = None
+    # Accept flexible types; normalize in handler
+    title: Optional[Any] = None
+    subtitle: Optional[Any] = None
+    authors: Optional[Any] = None
+    publisher: Optional[Any] = None
+    publication_date: Optional[Any] = None
+    isbn_13: Optional[Any] = None
+    isbn_10: Optional[Any] = None
+    providers: Optional[Any] = None
 
 
 class LookupResponse(BaseModel):
@@ -126,19 +127,48 @@ async def processed_load(path: str):
 
 @app.post("/lookup", response_model=LookupResponse)
 async def lookup(req: LookupRequest):
+    def _to_str(x: Any) -> Optional[str]:
+        return None if x is None else str(x)
+    def _to_str_list(x: Any) -> List[str]:
+        if x is None:
+            return []
+        if isinstance(x, list):
+            return [str(i) for i in x if i is not None]
+        if isinstance(x, str):
+            return [x]
+        return [str(x)]
+
+    safe_title = _to_str(req.title)
+    safe_subtitle = _to_str(req.subtitle)
+    safe_authors = _to_str_list(req.authors)
+    safe_publisher = _to_str(req.publisher)
+    safe_pubdate = _to_str(req.publication_date)
+    safe_isbn13 = _to_str(req.isbn_13)
+    safe_isbn10 = _to_str(req.isbn_10)
+    safe_providers = None if req.providers is None else _to_str_list(req.providers)
+
     offers, errors = await aggregate_offers(
-        title=req.title,
-        authors=req.authors or [],
-        isbn_13=req.isbn_13,
-        isbn_10=req.isbn_10,
-        publisher=req.publisher,
-        publication_date=req.publication_date,
-        providers=req.providers,  # None => default list
+        title=safe_title,
+        authors=safe_authors,
+        isbn_13=safe_isbn13,
+        isbn_10=safe_isbn10,
+        publisher=safe_publisher,
+        publication_date=safe_pubdate,
+        providers=safe_providers,  # None => default list
         timeout_seconds=8.0,
     )
     return LookupResponse(
-        query=req.model_dump(),
-        providers=[name for name, _ in DEFAULT_PROVIDERS] if req.providers is None else req.providers,
+        query={
+            "title": safe_title,
+            "subtitle": safe_subtitle,
+            "authors": safe_authors,
+            "publisher": safe_publisher,
+            "publication_date": safe_pubdate,
+            "isbn_13": safe_isbn13,
+            "isbn_10": safe_isbn10,
+            "providers": safe_providers,
+        },
+        providers=[name for name, _ in DEFAULT_PROVIDERS] if safe_providers is None else safe_providers,
         offers=offers,
         errors=errors,
     )

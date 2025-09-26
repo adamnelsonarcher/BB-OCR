@@ -15,6 +15,81 @@ def _extract_year(text: str) -> Optional[str]:
     return m.group(0) if m else None
 
 
+def _to_float(num_str: str) -> Optional[float]:
+    if not num_str:
+        return None
+    s = str(num_str).strip()
+    # Determine decimal separator: pick the last occurrence among ',' and '.' as decimal
+    last_comma = s.rfind(',')
+    last_dot = s.rfind('.')
+    if last_comma == -1 and last_dot == -1:
+        # digits only
+        try:
+            return float(s)
+        except Exception:
+            return None
+    # Identify decimal separator position
+    if last_comma > last_dot:
+        dec = ','
+        thou = '.'
+    else:
+        dec = '.'
+        thou = ','
+    # Remove thousand separators and normalize decimal
+    parts = s.replace(thou, '')
+    parts = parts.replace(dec, '.')
+    try:
+        return float(parts)
+    except Exception:
+        return None
+
+
+def _parse_price(text: str) -> (Optional[str], Optional[float]):
+    if not text:
+        return None, None
+    t = re.sub(r"\s+", " ", str(text)).strip()
+    # Common currency tokens and symbols
+    symbol_to_ccy = {
+        '$': 'USD', '£': 'GBP', '€': 'EUR',
+    }
+    word_to_ccy = {
+        'USD': 'USD', 'US$': 'USD', 'US$': 'USD', 'US DOLLARS': 'USD',
+        'GBP': 'GBP', 'EUR': 'EUR', 'CAD': 'CAD', 'AUD': 'AUD',
+        'C$': 'CAD', 'CA$': 'CAD', 'AU$': 'AUD',
+    }
+    patterns = [
+        r"\b(USD|GBP|EUR|CAD|AUD)\b\s*([0-9][0-9.,]*)",
+        r"\b(US\$|C\$|CA\$|AU\$)\b\s*([0-9][0-9.,]*)",
+        r"([\$£€])\s*([0-9][0-9.,]*)",
+        r"([0-9][0-9.,]*)\s*\b(USD|GBP|EUR|CAD|AUD)\b",
+    ]
+    for pat in patterns:
+        m = re.search(pat, t, flags=re.IGNORECASE)
+        if not m:
+            continue
+        if len(m.groups()) == 2:
+            g1, g2 = m.group(1), m.group(2)
+            if g1 in symbol_to_ccy:
+                ccy = symbol_to_ccy[g1]
+                amt = _to_float(g2)
+                return ccy, amt
+            if g2 in word_to_ccy or g2.upper() in word_to_ccy:
+                ccy = word_to_ccy.get(g2, word_to_ccy.get(g2.upper(), None))
+                amt = _to_float(g1)
+                return ccy, amt
+            ccy = word_to_ccy.get(g1, word_to_ccy.get(g1.upper(), None))
+            amt = _to_float(g2)
+            if ccy or amt is not None:
+                return ccy, amt
+    # Fallback: any amount with symbol adjacent (e.g., US$12.34)
+    m = re.search(r"(US\$|C\$|CA\$|AU\$)([0-9][0-9.,]*)", t, flags=re.IGNORECASE)
+    if m:
+        ccy = word_to_ccy.get(m.group(1).upper(), None)
+        amt = _to_float(m.group(2))
+        return ccy, amt
+    return None, None
+
+
 class AbeBooksHtmlProvider:
     BASE = "https://www.abebooks.com/servlet/SearchResults"
 
@@ -82,25 +157,38 @@ class AbeBooksHtmlProvider:
                 title_text = a.get("title") or (a.get_text(strip=True) if a else None)
                 author_el = c.select_one(".author, .srp-author, .result-author, .text-muted")
                 author_text = author_el.get_text(strip=True) if author_el else None
-                price_el = c.select_one(".item-price, .srp-item-price, .price, [itemprop='price']")
-                price_text = price_el.get_text(strip=True) if price_el else None
+                # Price extraction: check multiple potential selectors and attributes
+                price_el = (c.select_one("[itemprop='price']") or
+                            c.select_one("meta[itemprop='price']") or
+                            c.select_one(".item-price") or
+                            c.select_one(".srp-item-price") or
+                            c.select_one(".price") or
+                            c.select_one("[data-cy='listing-price']") or
+                            c.select_one("[data-cy='item-price']"))
+                price_text = None
+                currency = None
+                amount = None
+                if price_el:
+                    # meta or span with content attribute
+                    if price_el.has_attr("content"):
+                        amount = _to_float(price_el.get("content"))
+                        # look for explicit currency near
+                        cur_el = c.select_one("meta[itemprop='priceCurrency']") or c.select_one("[itemprop='priceCurrency']")
+                        if cur_el and cur_el.has_attr("content"):
+                            currency = (cur_el.get("content") or "").strip().upper() or None
+                    if amount is None:
+                        price_text = price_el.get_text(" ", strip=True)
+                if amount is None and (price_text or c):
+                    ccy, amt = _parse_price(price_text or c.get_text(" ", strip=True))
+                    currency = currency or ccy
+                    amount = amount or amt
                 pub_el = c.select_one(".publisher, .pub, .text-muted")
                 pub_text = pub_el.get_text(strip=True) if pub_el else None
 
                 if not title_text and not href and not price_text:
                     continue
 
-                amount = None
-                currency = None
-                if price_text:
-                    m = re.search(r"([A-Z]{3}|\$|£|€)\s*([0-9]+(?:[.,][0-9]{2})?)", price_text)
-                    if m:
-                        cur, amt = m.group(1), m.group(2)
-                        currency = {"$": "USD", "£": "GBP", "€": "EUR"}.get(cur, cur)
-                        try:
-                            amount = float(amt.replace(",", ""))
-                        except Exception:
-                            amount = None
+                # If still missing, leave currency/amount as None
 
                 offer = {
                     "provider": "abebooks",
