@@ -715,13 +715,14 @@ async def example_output(book_id: str):
 
 
 class PricingLookupPayload(BaseModel):
-	isbn_13: Optional[str] = None
-	isbn_10: Optional[str] = None
-	title: Optional[str] = None
-	authors: Optional[List[str]] = None
-	publisher: Optional[str] = None
-	publication_date: Optional[str] = None
-	providers: Optional[List[str]] = None
+	# Accept flexible input types; we'll normalize inside the handler
+	isbn_13: Optional[Any] = None
+	isbn_10: Optional[Any] = None
+	title: Optional[Any] = None
+	authors: Optional[Any] = None
+	publisher: Optional[Any] = None
+	publication_date: Optional[Any] = None
+	providers: Optional[Any] = None
 
 
 @app.get("/api/pricing/providers")
@@ -733,19 +734,47 @@ async def pricing_providers():
 async def pricing_lookup(payload: PricingLookupPayload):
 	if aggregate_offers is None:
 		return JSONResponse(status_code=500, content={"error": "pricing aggregator unavailable"})
+	# Defensive normalization to tolerate strings/nulls from various JSONs
+	def _to_str(x: Any) -> Optional[str]:
+		return None if x is None else str(x)
+	def _to_str_list(x: Any) -> List[str]:
+		if x is None:
+			return []
+		if isinstance(x, list):
+			return [str(i) for i in x if i is not None]
+		if isinstance(x, str):
+			return [x]
+		return [str(x)]
+	safe_title = _to_str(payload.title)
+	safe_authors = _to_str_list(payload.authors)  # handles string -> [string]
+	safe_isbn13 = _to_str(payload.isbn_13)
+	safe_isbn10 = _to_str(payload.isbn_10)
+	safe_publisher = _to_str(payload.publisher)
+	safe_pubdate = _to_str(payload.publication_date)
+	safe_providers = None
+	if payload.providers is not None:
+		safe_providers = [str(p) for p in payload.providers if p is not None]
 	offers, errors = await aggregate_offers(
-		title=payload.title,
-		authors=payload.authors or [],
-		isbn_13=payload.isbn_13,
-		isbn_10=payload.isbn_10,
-		publisher=payload.publisher,
-		publication_date=payload.publication_date,
-		providers=payload.providers,
+		title=safe_title,
+		authors=safe_authors,
+		isbn_13=safe_isbn13,
+		isbn_10=safe_isbn10,
+		publisher=safe_publisher,
+		publication_date=safe_pubdate,
+		providers=safe_providers,
 		timeout_seconds=8.0,
 	)
 	return {
-		"query": payload.model_dump(),
-		"providers": payload.providers or [name for name, _ in (DEFAULT_PROVIDERS or [])],
+		"query": {
+			"title": safe_title,
+			"authors": safe_authors,
+			"isbn_13": safe_isbn13,
+			"isbn_10": safe_isbn10,
+			"publisher": safe_publisher,
+			"publication_date": safe_pubdate,
+			"providers": safe_providers,
+		},
+		"providers": safe_providers or [name for name, _ in (DEFAULT_PROVIDERS or [])],
 		"offers": offers,
 		"errors": errors,
 	}
