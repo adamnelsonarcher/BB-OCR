@@ -264,6 +264,9 @@ function startTracePolling(id) {
   try {
     if (traceEventSource) { try { traceEventSource.close(); } catch (e) {} }
     traceEventSource = new EventSource(`/api/trace_stream?id=${encodeURIComponent(id)}&last_ts=${lastTs}&last_seq=${lastSeq}`);
+    traceEventSource.onopen = () => {
+      // when reconnecting after server restart, keep using SSE
+    };
     traceEventSource.addEventListener('trace', (ev) => {
       try {
         const payload = JSON.parse(ev.data);
@@ -274,10 +277,15 @@ function startTracePolling(id) {
       } catch {}
     });
     traceEventSource.onerror = () => {
-      // Fallback to polling if SSE fails
-      try { traceEventSource.close(); } catch (e) {}
-      traceEventSource = null;
-      startTraceInterval(id, lastTs, lastSeq);
+      // Delay fallback briefly to allow auto-retry to reconnect after server restart
+      const prevLastTs = lastTs, prevLastSeq = lastSeq;
+      setTimeout(() => {
+        if (!traceEventSource || traceEventSource.readyState === EventSource.CLOSED) {
+          try { if (traceEventSource) traceEventSource.close(); } catch (e) {}
+          traceEventSource = null;
+          startTraceInterval(id, prevLastTs, prevLastSeq);
+        }
+      }, 2200);
     };
     return;
   } catch (e) {
@@ -310,6 +318,9 @@ function startLogPolling(id) {
     if (logEventSource) { try { logEventSource.close(); } catch (e) {} }
     if (consoleLogEl) consoleLogEl.textContent = '';
     logEventSource = new EventSource(`/api/log_stream?id=${encodeURIComponent(id)}&last_ts=${lastTs}&last_seq=${lastSeq}`);
+    logEventSource.onopen = () => {
+      // keep SSE after restart
+    };
     logEventSource.addEventListener('log', (ev) => {
       try {
         const payload = JSON.parse(ev.data);
@@ -327,9 +338,14 @@ function startLogPolling(id) {
       } catch {}
     });
     logEventSource.onerror = () => {
-      try { logEventSource.close(); } catch (e) {}
-      logEventSource = null;
-      startLogInterval(id, lastTs, lastSeq);
+      const prevLastTs = lastTs, prevLastSeq = lastSeq;
+      setTimeout(() => {
+        if (!logEventSource || logEventSource.readyState === EventSource.CLOSED) {
+          try { if (logEventSource) logEventSource.close(); } catch (e) {}
+          logEventSource = null;
+          startLogInterval(id, prevLastTs, prevLastSeq);
+        }
+      }, 2200);
     };
     return;
   } catch (e) {}
@@ -667,6 +683,14 @@ function switchTab(name) {
 tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
 // pricing logic removed; iframe handles functionality
+// Cleanup open SSE streams on tab close or reload
+window.addEventListener('beforeunload', () => {
+  try { if (traceEventSource) traceEventSource.close(); } catch (e) {}
+  try { if (logEventSource) logEventSource.close(); } catch (e) {}
+  try { if (jobEventSource) jobEventSource.close(); } catch (e) {}
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+});
 
 function cleanupStreams() {
   if (traceEventSource) { try { traceEventSource.close(); } catch (e) {} traceEventSource = null; }

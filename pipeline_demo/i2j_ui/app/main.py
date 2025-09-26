@@ -74,6 +74,9 @@ _STATUS_LOCK = threading.Lock()
 _STATUS_STREAMS: Dict[str, list] = {}
 _STATUS_SEQ: Dict[str, int] = {}
 
+# One-time Ollama warm-check state
+_OLLAMA_WARMED = False
+
 def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
     # Track which heavy image fields we've already sent to clients per image index
     heavy_fields = ("original_b64", "preprocessed_b64", "edge_cropped_b64", "auto_cropped_b64")
@@ -207,7 +210,8 @@ async def trace_stream(id: str, last_ts: int = 0, last_seq: int = -1):
     """
     async def event_generator():
         nonlocal last_ts, last_seq
-        # Send initial ping to flush headers and keep connection
+        # Suggest client retry interval and send initial ping to flush headers
+        yield "retry: 2000\n\n"
         yield _sse_format("ping", "{}")
         last_heartbeat = time.monotonic()
         # Initial burst of any buffered items
@@ -254,6 +258,7 @@ async def log_stream(id: str, last_ts: int = 0, last_seq: int = -1):
     """Server-Sent Events stream for console log lines."""
     async def event_generator():
         nonlocal last_ts, last_seq
+        yield "retry: 2000\n\n"
         yield _sse_format("ping", "{}")
         last_heartbeat = time.monotonic()
         while True:
@@ -284,7 +289,8 @@ async def job_stream(id: str, last_ts: int = 0, last_seq: int = -1):
     """Server-Sent Events stream for job status/result updates."""
     async def event_generator():
         nonlocal last_ts, last_seq
-        # Initial ping to keep connection and flush headers
+        # Suggest retry and send initial ping to keep connection and flush headers
+        yield "retry: 2000\n\n"
         yield _sse_format("ping", "{}")
         last_heartbeat = time.monotonic()
         # Emit any buffered items immediately, then keep streaming
@@ -314,6 +320,44 @@ async def job_stream(id: str, last_ts: int = 0, last_seq: int = -1):
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
     })
+
+
+def _ollama_quick_ping() -> None:
+    global _OLLAMA_WARMED
+    if _OLLAMA_WARMED:
+        return
+    try:
+        # Check tags to confirm server is reachable and pick a model
+        tags = requests.get("http://localhost:11434/api/tags", timeout=2)
+        model: Optional[str] = None
+        if tags.status_code == 200:
+            models = [m.get("name") for m in tags.json().get("models", []) if m.get("name")]
+            if models:
+                model = next((m for m in models if str(m).startswith("gemma3:4b")), models[0])
+        # Send a tiny generate to verify model hotness without blocking long
+        if model:
+            try:
+                requests.post(
+                    "http://localhost:11434/api/generate",
+                    json={"model": model, "prompt": "ping", "stream": False},
+                    timeout=3,
+                )
+            except Exception:
+                pass
+        _OLLAMA_WARMED = True
+    except Exception:
+        # Ignore errors; this is a best-effort one-time check
+        pass
+
+
+@app.on_event("startup")
+async def _on_startup():
+    # Run the warm-check in a background thread to avoid blocking app startup
+    try:
+        t = threading.Thread(target=_ollama_quick_ping, daemon=True)
+        t.start()
+    except Exception:
+        pass
 
 @app.get("/api/job_status")
 async def job_status(id: str):
