@@ -13,7 +13,6 @@ import requests
 import tempfile
 import threading
 from typing import Callable
-import logging
 
 # Resolve path to the OCR/LLM pipeline (pipeline_demo/extractor)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -253,27 +252,6 @@ app.add_middleware(
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# Quiet uvicorn access logs for noisy polling endpoints
-class _AccessLogSilencer(logging.Filter):
-    _SILENCE_PATHS = ("/api/trace_poll", "/api/log_poll", "/api/job_result")
-    def filter(self, record: logging.LogRecord) -> bool:
-        try:
-            args = getattr(record, 'args', {}) or {}
-            request_line = args.get('request_line') or ''
-            status_code = int(args.get('status_code') or 0)
-            # Hide frequent success/accepted logs for polling
-            if any(p in request_line for p in self._SILENCE_PATHS) and status_code in (200, 202):
-                return False
-        except Exception:
-            pass
-        return True
-
-try:
-    logging.getLogger("uvicorn.access").addFilter(_AccessLogSilencer())
-except Exception:
-    pass
-
 
 class AcceptPayload(BaseModel):
 	id: str
