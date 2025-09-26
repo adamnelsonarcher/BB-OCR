@@ -1,0 +1,42 @@
+---
+alwaysApply: true
+---
+# BB-OCR Pipeline Overview (Extractor + Live UI + Pricing)
+
+This project processes book images into structured JSON metadata and optionally aggregates pricing/metadata from providers. It consists of three parts:
+
+## 1) Extractor
+- Entry points: [extractor/enhanced_extractor.py](mdc:extractor/enhanced_extractor.py), [extractor/process_book_enhanced.py](mdc:extractor/process_book_enhanced.py), [extractor/batch_processor_enhanced.py](mdc:extractor/batch_processor_enhanced.py)
+- Flow:
+  1. Images → preprocess (grayscale/denoise/CLAHE/sharpen)
+  2. Optional crops: centered edge-crop and/or auto text-region crop
+  3. OCR via EasyOCR (preferred) or Tesseract
+  4. Build enhanced prompt (includes OCR snippets from info pages)
+  5. Call Ollama VLM (default: gemma3:4b) and parse/validate JSON
+- Live trace: per-image artifacts (original, preprocessed, crops), OCR text, steps timeline, enhanced prompt, raw VLM.
+- Temp artifacts: written to system temp (not inside repo) to avoid dev server reloads.
+- Stability/Defaults:
+  - EasyOCR preferred; fallback to Tesseract if init fails
+  - Warm-up disabled in UI-driven runs; Ollama request has a timeout
+  - OCR indices default: skip cover for OCR (≥3 → [1,2], 2 → [1], 1 → [0])
+  - `edge_crop` and `crop_ocr` are user-configurable and applied to uploads and examples
+
+## 2) Image→JSON Web UI (Live)
+- Backend: [i2j_ui/app/main.py](mdc:i2j_ui/app/main.py)
+- Frontend: [i2j_ui/static/index.html](mdc:i2j_ui/static/index.html), [i2j_ui/static/script.js](mdc:i2j_ui/static/script.js), [i2j_ui/static/style.css](mdc:i2j_ui/static/style.css)
+- Behavior:
+  - Background jobs kick off extraction; UI polls for progress
+  - Endpoints: /api/process_image, /api/process_images, /api/process_example
+  - Streaming: /api/trace_poll (trace deltas), /api/job_result (status: 202 queued/running; 200 done/error)
+  - Live Output table (full width): Input image | Processed image (auto > edge > preproc) | OCR text; updates as steps arrive
+  - Accepted outputs saved under `i2j_ui/data/accepted/`
+
+## 3) Pricing Aggregator (Optional)
+- FastAPI app: [pricing_api/app/main.py](mdc:pricing_api/app/main.py)
+- Aggregates from providers (Google Books metadata, AbeBooks HTML prices)
+- Simple UI and endpoints; can load any saved extractor JSON
+
+## Notes
+- Primary goals: fast visual feedback of OCR pipeline, reproducible JSON outputs; pricing is optional.
+- The UI may evolve visually, but the extractor pipeline contract (OCR → prompt → VLM → JSON) and trace schema should remain stable.
+
