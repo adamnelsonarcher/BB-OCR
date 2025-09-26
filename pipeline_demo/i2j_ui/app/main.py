@@ -3,10 +3,11 @@ import sys
 import time
 import json
 from typing import Any, Dict, Optional, List
+import asyncio
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import requests
@@ -68,6 +69,11 @@ _LOG_LOCK = threading.Lock()
 _LOG_STREAMS: Dict[str, list] = {}
 _LOG_SEQ: Dict[str, int] = {}
 
+# In-memory job status/result streams per job id (for SSE)
+_STATUS_LOCK = threading.Lock()
+_STATUS_STREAMS: Dict[str, list] = {}
+_STATUS_SEQ: Dict[str, int] = {}
+
 def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
     # Track which heavy image fields we've already sent to clients per image index
     heavy_fields = ("original_b64", "preprocessed_b64", "edge_cropped_b64", "auto_cropped_b64")
@@ -125,6 +131,20 @@ def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
             })
     return _sink
 
+def _sse_format(event: str, data: str) -> str:
+    # Minimal SSE encoding: event and data lines terminated by two newlines
+    return f"event: {event}\n" + "\n".join([f"data: {line}" for line in data.splitlines() or [""]]) + "\n\n"
+
+def _status_push(job_id: str, payload: Dict[str, Any]) -> None:
+    with _STATUS_LOCK:
+        seq = _STATUS_SEQ.get(job_id, 0) + 1
+        _STATUS_SEQ[job_id] = seq
+        _STATUS_STREAMS.setdefault(job_id, []).append({
+            "ts": int(time.time() * 1000),
+            "seq": seq,
+            **payload,
+        })
+
 class _JobLogTee:
     def __init__(self, original, job_id: str):
         self._original = original
@@ -180,6 +200,30 @@ async def trace_poll(id: str, last_ts: int = 0, last_seq: int = -1):
             new_items = new_items[-100:]
     return {"items": new_items, "count": len(new_items)}
 
+@app.get("/api/trace_stream")
+async def trace_stream(id: str, last_ts: int = 0, last_seq: int = -1):
+    """Server-Sent Events stream for trace updates.
+    Sends only new items since last_seq/last_ts and keeps streaming.
+    """
+    async def event_generator():
+        nonlocal last_ts, last_seq
+        # Initial burst of any buffered items
+        while True:
+            with _TRACE_LOCK:
+                items = _TRACE_STREAMS.get(id, [])
+                if last_seq >= 0:
+                    new_items = [it for it in items if it.get("seq", -1) > last_seq]
+                else:
+                    new_items = [it for it in items if it.get("ts", 0) > last_ts]
+            if new_items:
+                for it in new_items:
+                    last_ts = max(last_ts, it.get("ts", 0))
+                    last_seq = max(last_seq, it.get("seq", -1))
+                    yield _sse_format("trace", json.dumps(it))
+            # brief sleep to avoid busy loop
+            await asyncio.sleep(0.35)
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
 @app.get("/api/log_poll")
 async def log_poll(id: str, last_ts: int = 0, last_seq: int = -1):
     with _LOG_LOCK:
@@ -192,6 +236,51 @@ async def log_poll(id: str, last_ts: int = 0, last_seq: int = -1):
         if len(new_items) > 100:
             new_items = new_items[-100:]
     return {"items": new_items, "count": len(new_items)}
+
+@app.get("/api/log_stream")
+async def log_stream(id: str, last_ts: int = 0, last_seq: int = -1):
+    """Server-Sent Events stream for console log lines."""
+    async def event_generator():
+        nonlocal last_ts, last_seq
+        while True:
+            with _LOG_LOCK:
+                items = _LOG_STREAMS.get(id, [])
+                if last_seq >= 0:
+                    new_items = [it for it in items if it.get("seq", -1) > last_seq]
+                else:
+                    new_items = [it for it in items if it.get("ts", 0) > last_ts]
+            if new_items:
+                for it in new_items:
+                    last_ts = max(last_ts, it.get("ts", 0))
+                    last_seq = max(last_seq, it.get("seq", -1))
+                    yield _sse_format("log", json.dumps(it))
+            await asyncio.sleep(0.25)
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+@app.get("/api/job_stream")
+async def job_stream(id: str, last_ts: int = 0, last_seq: int = -1):
+    """Server-Sent Events stream for job status/result updates."""
+    async def event_generator():
+        nonlocal last_ts, last_seq
+        # Emit any buffered items immediately, then keep streaming
+        while True:
+            with _STATUS_LOCK:
+                items = _STATUS_STREAMS.get(id, [])
+                if last_seq >= 0:
+                    new_items = [it for it in items if it.get("seq", -1) > last_seq]
+                else:
+                    new_items = [it for it in items if it.get("ts", 0) > last_ts]
+            if new_items:
+                for it in new_items:
+                    last_ts = max(last_ts, it.get("ts", 0))
+                    last_seq = max(last_seq, it.get("seq", -1))
+                    yield _sse_format("job", json.dumps(it))
+                # If the last item is terminal, we can exit to let client close
+                last_item = new_items[-1]
+                if last_item.get("status") in ("done", "error"):
+                    return
+            await asyncio.sleep(0.25)
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 @app.get("/api/job_status")
 async def job_status(id: str):
@@ -219,6 +308,8 @@ def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_e
 	try:
 		with _JOBS_LOCK:
 			_JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
+		# Broadcast running status
+		_status_push(job_id, {"status": "running", "files": [os.path.basename(p) for p in image_paths]})
 		# Prepare sinks
 		trace_sink = _make_trace_sink(job_id)
 		with _LOG_LOCK:
@@ -236,9 +327,12 @@ def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_e
 			sys.stderr = _orig_err
 		with _JOBS_LOCK:
 			_JOBS[job_id].update({"status": "done", "metadata": metadata})
+		# Broadcast completion with metadata and files
+		_status_push(job_id, {"status": "done", "files": [os.path.basename(p) for p in image_paths], "metadata": metadata})
 	except Exception as e:
 		with _JOBS_LOCK:
 			_JOBS[job_id].update({"status": "error", "error": str(e)})
+		_status_push(job_id, {"status": "error", "error": str(e)})
 	finally:
 		# Trim stored streams to avoid unbounded growth and release semaphore
 		with _TRACE_LOCK:
@@ -405,6 +499,8 @@ async def process_image(
 	t.start()
 	with _JOBS_LOCK:
 		_JOBS[item_id] = {"status": "queued", "files": [os.path.basename(saved_path)]}
+	# Broadcast queued status
+	_status_push(item_id, {"status": "queued", "files": [os.path.basename(saved_path)]})
 	return {"id": item_id, "files": [os.path.basename(saved_path)], "status": "started"}
 
 
@@ -448,6 +544,7 @@ async def process_images(
 	t.start()
 	with _JOBS_LOCK:
 		_JOBS[item_id] = {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]}
+	_status_push(item_id, {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]})
 	return {"id": item_id, "files": [os.path.basename(p) for p in saved_paths], "status": "started"}
 
 
@@ -512,12 +609,16 @@ async def process_example(payload: ExamplePayload):
 	with _LOG_LOCK:
 		_LOG_STREAMS[job_id] = []
 		_LOG_SEQ[job_id] = 0
+	with _STATUS_LOCK:
+		_STATUS_STREAMS[job_id] = []
+		_STATUS_SEQ[job_id] = 0
 	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
 		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False)
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
 		_JOBS[job_id] = {"status": "queued", "files": [os.path.basename(p) for p in image_paths]}
+	_status_push(job_id, {"status": "queued", "files": [os.path.basename(p) for p in image_paths]})
 	return {"id": job_id, "files": [os.path.basename(p) for p in image_paths], "status": "started"}
 
 

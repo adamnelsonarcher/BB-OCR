@@ -48,6 +48,9 @@ const autoCropChk = document.getElementById('auto-crop');
 const overlayBox = document.querySelector('.overlay-box');
 let pollTimer = null;
 let logPollTimer = null;
+let traceEventSource = null;
+let logEventSource = null;
+let jobEventSource = null;
 let examplesIndex = {};
 
 let lastId = null;
@@ -257,6 +260,33 @@ function renderTrace(metadata) {
 function startTracePolling(id) {
   let lastTs = 0;
   let lastSeq = -1;
+  // Prefer SSE if available
+  try {
+    if (traceEventSource) { try { traceEventSource.close(); } catch (e) {} }
+    traceEventSource = new EventSource(`/api/trace_stream?id=${encodeURIComponent(id)}&last_ts=${lastTs}&last_seq=${lastSeq}`);
+    traceEventSource.addEventListener('trace', (ev) => {
+      try {
+        const payload = JSON.parse(ev.data);
+        const it = payload;
+        if (it && it.ts !== undefined) lastTs = Math.max(lastTs, it.ts || 0);
+        if (it && it.seq !== undefined) lastSeq = Math.max(lastSeq, it.seq || -1);
+        if (it && it.trace) renderTrace({ _trace: it.trace });
+      } catch {}
+    });
+    traceEventSource.onerror = () => {
+      // Fallback to polling if SSE fails
+      try { traceEventSource.close(); } catch (e) {}
+      traceEventSource = null;
+      startTraceInterval(id, lastTs, lastSeq);
+    };
+    return;
+  } catch (e) {
+    // ignore and fallback
+  }
+  startTraceInterval(id, lastTs, lastSeq);
+}
+
+function startTraceInterval(id, lastTs, lastSeq) {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = setInterval(async () => {
     try {
@@ -275,6 +305,38 @@ function startTracePolling(id) {
 function startLogPolling(id) {
   let lastTs = 0;
   let lastSeq = -1;
+  // Prefer SSE
+  try {
+    if (logEventSource) { try { logEventSource.close(); } catch (e) {} }
+    if (consoleLogEl) consoleLogEl.textContent = '';
+    logEventSource = new EventSource(`/api/log_stream?id=${encodeURIComponent(id)}&last_ts=${lastTs}&last_seq=${lastSeq}`);
+    logEventSource.addEventListener('log', (ev) => {
+      try {
+        const payload = JSON.parse(ev.data);
+        const it = payload;
+        if (it && it.ts !== undefined) lastTs = Math.max(lastTs, it.ts || 0);
+        if (it && it.seq !== undefined) lastSeq = Math.max(lastSeq, it.seq || -1);
+        if (consoleLogEl && it && it.line !== undefined) {
+          const text = String(it.line || '');
+          consoleLogEl.textContent += (consoleLogEl.textContent ? '\n' : '') + text;
+          if (consoleLogEl.textContent.length > 10000) {
+            consoleLogEl.textContent = consoleLogEl.textContent.slice(-10000);
+          }
+          consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+        }
+      } catch {}
+    });
+    logEventSource.onerror = () => {
+      try { logEventSource.close(); } catch (e) {}
+      logEventSource = null;
+      startLogInterval(id, lastTs, lastSeq);
+    };
+    return;
+  } catch (e) {}
+  startLogInterval(id, lastTs, lastSeq);
+}
+
+function startLogInterval(id, lastTs, lastSeq) {
   if (logPollTimer) clearInterval(logPollTimer);
   if (consoleLogEl) consoleLogEl.textContent = '';
   logPollTimer = setInterval(async () => {
@@ -286,8 +348,6 @@ function startLogPolling(id) {
       lastTs = Math.max(lastTs, ...items.map(it => it.ts || 0));
       lastSeq = Math.max(lastSeq, ...items.map(it => it.seq || -1));
       if (consoleLogEl) {
-        // Collapse duplicate lines coming from backend (already coalesced), and
-        // throttle appending to reduce layout thrash
         const text = items.map(it => (it.line || '')).join('\n');
         consoleLogEl.textContent += (consoleLogEl.textContent ? '\n' : '') + text;
         if (consoleLogEl.textContent.length > 10000) {
@@ -359,28 +419,30 @@ async function processSingle(blob, filename = 'capture.jpg') {
   statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
   if (lastId) startLogPolling(lastId);
-  (async function pollResult() {
+  if (jobEventSource) { try { jobEventSource.close(); } catch (e) {} }
+  jobEventSource = new EventSource(`/api/job_stream?id=${encodeURIComponent(lastId)}`);
+  jobEventSource.addEventListener('job', (ev) => {
     try {
-      const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
-      const j = await r.json();
-      if (r.status === 202) {
-        setTimeout(pollResult, 600);
-        return;
-      }
-      if (j && j.status === 'error') {
+      const j = JSON.parse(ev.data);
+      if (!j || !j.status) return;
+      if (j.status === 'error') {
         statusEl.textContent = 'Error';
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
+        cleanupStreams();
         return;
       }
-      if (r.ok && j && j.status === 'done') {
-        statusEl.textContent = `Processed: ${j.files.join(', ')}`;
-        metaTable.innerHTML = renderTable(j.metadata);
-        renderTrace(j.metadata);
+      if (j.status === 'done') {
+        statusEl.textContent = `Processed: ${(j.files || []).join(', ')}`;
+        if (j.metadata) {
+          metaTable.innerHTML = renderTable(j.metadata);
+          renderTrace(j.metadata);
+        }
         actions.classList.remove('hidden');
+        cleanupStreams();
       }
-    } catch (e) {}
-  })();
+    } catch {}
+  });
 }
 
 async function processBatch(blobs) {
@@ -419,28 +481,30 @@ async function processBatch(blobs) {
   statusEl.textContent = `Started: ${data.files.join(', ')}`;
   if (lastId) startTracePolling(lastId);
   if (lastId) startLogPolling(lastId);
-  (async function pollResult() {
+  if (jobEventSource) { try { jobEventSource.close(); } catch (e) {} }
+  jobEventSource = new EventSource(`/api/job_stream?id=${encodeURIComponent(lastId)}`);
+  jobEventSource.addEventListener('job', (ev) => {
     try {
-      const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
-      const j = await r.json();
-      if (r.status === 202) {
-        setTimeout(pollResult, 600);
-        return;
-      }
-      if (j && j.status === 'error') {
+      const j = JSON.parse(ev.data);
+      if (!j || !j.status) return;
+      if (j.status === 'error') {
         statusEl.textContent = 'Error';
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
+        cleanupStreams();
         return;
       }
-      if (r.ok && j && j.status === 'done') {
-        statusEl.textContent = `Processed: ${j.files.join(', ')}`;
-        metaTable.innerHTML = renderTable(j.metadata);
-        renderTrace(j.metadata);
+      if (j.status === 'done') {
+        statusEl.textContent = `Processed: ${(j.files || []).join(', ')}`;
+        if (j.metadata) {
+          metaTable.innerHTML = renderTable(j.metadata);
+          renderTrace(j.metadata);
+        }
         actions.classList.remove('hidden');
+        cleanupStreams();
       }
-    } catch (e) {}
-  })();
+    } catch {}
+  });
 }
 
 btnCapture.addEventListener('click', async () => {
@@ -526,28 +590,30 @@ btnRunExample.addEventListener('click', async () => {
   statusEl.textContent = `Started: ${(data.files || []).join(', ') || id}`;
   if (lastId) startTracePolling(lastId);
   if (lastId) startLogPolling(lastId);
-  (async function pollResult() {
+  if (jobEventSource) { try { jobEventSource.close(); } catch (e) {} }
+  jobEventSource = new EventSource(`/api/job_stream?id=${encodeURIComponent(lastId)}`);
+  jobEventSource.addEventListener('job', (ev) => {
     try {
-      const r = await fetch(`/api/job_result?id=${encodeURIComponent(lastId)}`);
-      const j = await r.json();
-      if (r.status === 202) {
-        setTimeout(pollResult, 600);
-        return;
-      }
-      if (j && j.status === 'error') {
+      const j = JSON.parse(ev.data);
+      if (!j || !j.status) return;
+      if (j.status === 'error') {
         statusEl.textContent = 'Error';
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
+        cleanupStreams();
         return;
       }
-      if (r.ok && j && j.status === 'done') {
+      if (j.status === 'done') {
         statusEl.textContent = `Processed: ${(j.files || []).join(', ') || id}`;
-        metaTable.innerHTML = renderTable(j.metadata);
-        renderTrace(j.metadata);
+        if (j.metadata) {
+          metaTable.innerHTML = renderTable(j.metadata);
+          renderTrace(j.metadata);
+        }
         actions.classList.remove('hidden');
+        cleanupStreams();
       }
-    } catch (e) {}
-  })();
+    } catch {}
+  });
 });
 
 btnLoadExampleOutput.addEventListener('click', async () => {
@@ -601,5 +667,13 @@ function switchTab(name) {
 tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
 // pricing logic removed; iframe handles functionality
+
+function cleanupStreams() {
+  if (traceEventSource) { try { traceEventSource.close(); } catch (e) {} traceEventSource = null; }
+  if (logEventSource) { try { logEventSource.close(); } catch (e) {} logEventSource = null; }
+  if (jobEventSource) { try { jobEventSource.close(); } catch (e) {} jobEventSource = null; }
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  if (logPollTimer) { clearInterval(logPollTimer); logPollTimer = null; }
+}
 
 
