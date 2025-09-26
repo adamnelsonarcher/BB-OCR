@@ -184,6 +184,29 @@ class AbeBooksHtmlProvider:
                     amount = amount or amt
                 pub_el = c.select_one(".publisher, .pub, .text-muted")
                 pub_text = pub_el.get_text(strip=True) if pub_el else None
+                # Try structured/microdata publication date
+                if not pub_text:
+                    date_el = (c.select_one("meta[itemprop='datePublished']") or
+                               c.select_one("[itemprop='datePublished']") or
+                               c.select_one("time[itemprop='datePublished']") or
+                               c.select_one("time"))
+                    if date_el:
+                        if date_el.has_attr("content"):
+                            pub_text = (date_el.get("content") or "").strip() or None
+                        else:
+                            pub_text = date_el.get_text(strip=True) or None
+                # Fallback: look for common text patterns near a year
+                if not pub_text:
+                    snippet = c.get_text(" ", strip=True)
+                    m_pub = re.search(r"(Published|Publication\s*date|Publication)\s*[:\-]?\s*(?:[A-Za-z]+\s+)?((?:18|19|20)\d{2})",
+                                      snippet, flags=re.IGNORECASE)
+                    if m_pub:
+                        pub_text = m_pub.group(2)
+                # Final fallback: any year in the card
+                if not pub_text:
+                    oy = _extract_year(c.get_text(" ", strip=True))
+                    if oy:
+                        pub_text = oy
 
                 if not title_text and not href and not price_text:
                     continue
