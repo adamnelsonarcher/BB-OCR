@@ -129,7 +129,9 @@ class AbeBooksHtmlProvider:
         soup = BeautifulSoup(html, "html.parser")
 
         results: List[Dict[str, Any]] = []
-        cards = soup.select(".cf .result, .srp-item, .result, .cf.search-result, .search-result")
+        cards = soup.select(".srp-list-item, .cf .result, .srp-item, .result, .cf.search-result, .search-result")
+        if not cards:
+            cards = soup.select("li.srp-list-item")
         if not cards:
             cards = soup.select("li, div")
 
@@ -161,9 +163,24 @@ class AbeBooksHtmlProvider:
         seen = set()
         for idx, c in enumerate(cards):
             try:
-                a = c.select_one("a[title], a[href*='BookDetailsPL']") or c.find("a")
+                title_el = c.select_one("h2.srp-title") or c.select_one(".srp-title")
+                title_text = title_el.get_text(strip=True) if title_el else None
+                if not title_text:
+                    a_title = c.select_one("a.srp-item-detail-link")
+                    if a_title:
+                        txt = a_title.get_text(" ", strip=True)
+                        if txt:
+                            title_text = txt.splitlines()[0].strip()
+                if not title_text:
+                    any_h2 = c.find("h2")
+                    if any_h2:
+                        title_text = any_h2.get_text(strip=True) or None
+
+                # Prefer the actual listing URL, not random anchors inside the card
+                a = c.select_one("a.srp-item-detail-link") or c.select_one("a[href*='/bd']")
                 href = a["href"] if a and a.has_attr("href") else None
-                title_text = a.get("title") or (a.get_text(strip=True) if a else None)
+                if href and not href.startswith("http"):
+                    href = "https://www.abebooks.com" + href
                 author_el = c.select_one(".author, .srp-author, .result-author, .text-muted")
                 author_text = author_el.get_text(strip=True) if author_el else None
                 # Price extraction: check multiple potential selectors and attributes
@@ -191,6 +208,19 @@ class AbeBooksHtmlProvider:
                     ccy, amt = _parse_price(price_text or c.get_text(" ", strip=True))
                     currency = currency or ccy
                     amount = amount or amt
+                # Bonus fallback: inspect add-to-basket attributes for numeric price
+                if amount is None:
+                    basket = c.select_one("a[id^='add-to-basket-link-']")
+                    if basket:
+                        cc_attr = basket.get('data-csa-c-cost')
+                        if cc_attr:
+                            try:
+                                amount = float(cc_attr)
+                            except Exception:
+                                pass
+                        pcur = basket.get('data-csa-c-purchase-currency') or ""
+                        if currency is None and ('US%24' in pcur or 'USD' in pcur.upper()):
+                            currency = 'USD'
                 pub_el = c.select_one(".publisher, .pub, .text-muted")
                 pub_text = pub_el.get_text(strip=True) if pub_el else None
                 # Try structured/microdata publication date
