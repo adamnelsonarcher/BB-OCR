@@ -114,22 +114,32 @@ btnRun.addEventListener('click', async () => {
     outEl.textContent = JSON.stringify(data, null, 2);
     // Render request table
     reqTable.innerHTML = toTable(data.query || payload);
-    // Choose best offer: prefer exact ISBN match, else same title (case-insens), else first
+    // Choose best offer: ONLY consider offers matching the query's publication year.
+    // Within those: prefer exact ISBN match, else same title (case-insens), else first.
     const offers = data.offers || [];
     const q_isbn13 = (data.query?.isbn_13 || '').replace(/[-\s]/g, '');
     const q_isbn10 = (data.query?.isbn_10 || '').replace(/[-\s]/g, '');
     const q_title = (data.query?.title || '').trim().toLowerCase();
+    const extractYear = (v) => {
+      const m = String(v ?? '').match(/(18|19|20)\d{2}/);
+      return m ? m[0] : null;
+    };
+    const q_year = extractYear(data.query?.publication_date ?? null);
+    let candidates = offers;
+    if (q_year) {
+      candidates = offers.filter(o => extractYear(o.publication_date) === q_year);
+    }
     let best = null;
-    for (const o of offers) {
+    for (const o of candidates) {
       const oi13 = (o.isbn_13 || '').replace(/[-\s]/g, '');
       const oi10 = (o.isbn_10 || '').replace(/[-\s]/g, '');
       if (q_isbn13 && oi13 === q_isbn13) { best = o; break; }
       if (q_isbn10 && oi10 === q_isbn10) { best = o; break; }
     }
     if (!best && q_title) {
-      best = offers.find(o => (o.title || '').trim().toLowerCase() === q_title) || null;
+      best = candidates.find(o => (o.title || '').trim().toLowerCase() === q_title) || null;
     }
-    if (!best) best = offers[0] || null;
+    // Do NOT fall back to non-matching-year offers
     respTable.innerHTML = best ? toTable(best) : '<div class="muted">No offers</div>';
 
     // Build merged view

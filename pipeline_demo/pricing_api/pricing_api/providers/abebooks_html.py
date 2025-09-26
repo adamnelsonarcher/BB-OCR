@@ -236,6 +236,15 @@ class AbeBooksHtmlProvider:
             except Exception:
                 continue
 
+        # If a publication year was provided in the query, strictly filter to matching year
+        if q_year:
+            filtered = []
+            for o in results:
+                oy = _extract_year(o.get("publication_date") or "")
+                if oy == q_year:
+                    filtered.append(o)
+            results = filtered
+
         results.sort(key=lambda x: (x.get("score", 0.0), -(x.get("amount") or 0)), reverse=True)
         return results[:10]
 
