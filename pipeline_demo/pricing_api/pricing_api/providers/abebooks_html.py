@@ -1,4 +1,5 @@
 import re
+import logging
 from typing import Optional, List, Dict, Any
 import httpx
 from bs4 import BeautifulSoup
@@ -92,6 +93,7 @@ def _parse_price(text: str) -> (Optional[str], Optional[float]):
 
 class AbeBooksHtmlProvider:
     BASE = "https://www.abebooks.com/servlet/SearchResults"
+    LOGGER = logging.getLogger("pricing_api.abebooks")
 
     async def lookup(
         self,
@@ -134,6 +136,13 @@ class AbeBooksHtmlProvider:
         q_title = _norm(title)
         q_author = _norm(primary_author)
         q_year = year
+        try:
+            self.LOGGER.info(
+                "AbeBooks lookup: keywords=%r, year=%r, cards=%d",
+                keywords, year, len(cards)
+            )
+        except Exception:
+            pass
 
         def score_offer(o: Dict[str, Any]) -> float:
             s = 0.0
@@ -150,7 +159,7 @@ class AbeBooksHtmlProvider:
             return s
 
         seen = set()
-        for c in cards:
+        for idx, c in enumerate(cards):
             try:
                 a = c.select_one("a[title], a[href*='BookDetailsPL']") or c.find("a")
                 href = a["href"] if a and a.has_attr("href") else None
@@ -208,6 +217,26 @@ class AbeBooksHtmlProvider:
                     if oy:
                         pub_text = oy
 
+                # Diagnostics for first few cards
+                if idx < 10:
+                    try:
+                        probe_title_el = (c.select_one(".srp-item-detail .srp-title") or c.select_one(".srp-title") or c.select_one("h2.srp-title"))
+                        probe_author_el = (c.select_one(".srp-item-detail .srp-author") or c.select_one(".srp-author"))
+                        self.LOGGER.info(
+                            "AbeBooks card %d: href=%r a.title=%r a.text=%r srp_title=%r srp_author=%r price_text=%r currency=%r amount=%r",
+                            idx,
+                            href,
+                            (a.get("title") if a and a.has_attr("title") else None),
+                            (a.get_text(strip=True) if a else None),
+                            (probe_title_el.get_text(strip=True) if probe_title_el else None),
+                            (probe_author_el.get_text(strip=True) if probe_author_el else None),
+                            price_text,
+                            currency,
+                            amount,
+                        )
+                    except Exception:
+                        pass
+
                 if not title_text and not href and not price_text:
                     continue
 
@@ -245,6 +274,10 @@ class AbeBooksHtmlProvider:
                     filtered.append(o)
             results = filtered
 
+        try:
+            self.LOGGER.info("AbeBooks offers returned: %d", len(results))
+        except Exception:
+            pass
         results.sort(key=lambda x: (x.get("score", 0.0), -(x.get("amount") or 0)), reverse=True)
         return results[:10]
 

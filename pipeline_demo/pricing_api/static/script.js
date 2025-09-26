@@ -93,6 +93,39 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 }
 
+function normalizeTitle(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function titleTokens(s) {
+  const stop = new Set(['the','of','and','for','a','an','to','in','on','by','from','with','at','as','is','are','be','or','not','but']);
+  return normalizeTitle(s)
+    .split(' ')
+    .filter(t => t && t.length > 1 && !stop.has(t));
+}
+
+function jaccardSim(a, b) {
+  const sa = new Set(a);
+  const sb = new Set(b);
+  let inter = 0;
+  for (const t of sa) if (sb.has(t)) inter++;
+  const union = sa.size + sb.size - inter;
+  return union ? inter / union : 0;
+}
+
+function fuzzyTitleMatch(qTitle, oTitle) {
+  const qn = normalizeTitle(qTitle);
+  const on = normalizeTitle(oTitle);
+  if (!qn || !on) return false;
+  if (on.includes(qn) || qn.includes(on)) return true;
+  const sim = jaccardSim(titleTokens(qn), titleTokens(on));
+  return sim >= 0.5;
+}
+
 btnRun.addEventListener('click', async () => {
   outEl.textContent = 'Running...';
   let payload;
@@ -125,10 +158,13 @@ btnRun.addEventListener('click', async () => {
       return m ? m[0] : null;
     };
     const q_year = extractYear(data.query?.publication_date ?? null);
+    console.log('[pricing-ui] Query year:', q_year);
+    console.log('[pricing-ui] Offers received:', offers.length, offers.map(o => ({ provider: o.provider, amount: o.amount, currency: o.currency, pub: o.publication_date, title: o.title })));
     let candidates = offers;
     if (q_year) {
       candidates = offers.filter(o => extractYear(o.publication_date) === q_year);
     }
+    console.log('[pricing-ui] Candidates after year filter:', candidates.length);
     let best = null;
     for (const o of candidates) {
       const oi13 = (o.isbn_13 || '').replace(/[-\s]/g, '');
@@ -137,8 +173,26 @@ btnRun.addEventListener('click', async () => {
       if (q_isbn10 && oi10 === q_isbn10) { best = o; break; }
     }
     if (!best && q_title) {
-      best = candidates.find(o => (o.title || '').trim().toLowerCase() === q_title) || null;
+      best = candidates.find(o => normalizeTitle(o.title) === normalizeTitle(q_title)) || null;
     }
+    // Fuzzy title match within year-matched candidates
+    if (!best && q_title) {
+      const fuzzy = candidates.filter(o => fuzzyTitleMatch(q_title, o.title || ''));
+      if (fuzzy.length) {
+        const numeric = fuzzy.filter(o => typeof o.amount === 'number' && !Number.isNaN(o.amount));
+        best = numeric.length ? numeric.reduce((a, c) => (c.amount < a.amount ? c : a)) : fuzzy[0];
+      }
+    }
+    // Fallback within year-matched candidates: choose the cheapest numeric amount, else first
+    if (!best && candidates.length) {
+      const numeric = candidates.filter(o => typeof o.amount === 'number' && !Number.isNaN(o.amount));
+      if (numeric.length) {
+        best = numeric.reduce((acc, cur) => (cur.amount < acc.amount ? cur : acc));
+      } else {
+        best = candidates[0];
+      }
+    }
+    console.log('[pricing-ui] Best offer chosen:', best);
     // Do NOT fall back to non-matching-year offers
     respTable.innerHTML = best ? toTable(best) : '<div class="muted">No offers</div>';
 
@@ -170,6 +224,13 @@ btnRun.addEventListener('click', async () => {
       merged.language = pick(merged.language, best.language ?? null);
       merged.info_url = best.url ?? null;
       merged.source_provider = best.provider ?? null;
+
+      // Populate price from best offer in all cases (overwrite any existing)
+      const bAmt = best.amount;
+      const parsedAmt = (typeof bAmt === 'number') ? bAmt : (bAmt !== null && bAmt !== undefined && !Number.isNaN(Number(bAmt)) ? Number(bAmt) : null);
+      console.log('[pricing-ui] Price merge - raw amount:', bAmt, 'type:', typeof bAmt, 'parsed:', parsedAmt, 'currency:', best.currency);
+      merged.price = { currency: (best.currency ?? null), amount: parsedAmt };
+      console.log('[pricing-ui] Merged price now:', merged.price);
     }
     mergeTable.innerHTML = toTable(merged);
   } catch (e) {
