@@ -188,7 +188,10 @@ function renderTable(obj) {
     const v = obj[k];
     let valStr;
     if (Array.isArray(v)) valStr = v.join(', ');
-    else if (v && typeof v === 'object') valStr = `<pre>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
+    else if (v && typeof v === 'object') {
+      const preClass = (k === '_trace') ? ' class="hscroll"' : '';
+      valStr = `<pre${preClass}>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
+    }
     else valStr = (v === null || v === undefined) ? '' : String(v);
     return `<tr><td>${escapeHtml(k)}</td><td>${valStr}</td></tr>`;
   }).join('');
