@@ -207,6 +207,9 @@ async def trace_stream(id: str, last_ts: int = 0, last_seq: int = -1):
     """
     async def event_generator():
         nonlocal last_ts, last_seq
+        # Send initial ping to flush headers and keep connection
+        yield _sse_format("ping", "{}")
+        last_heartbeat = time.monotonic()
         # Initial burst of any buffered items
         while True:
             with _TRACE_LOCK:
@@ -220,9 +223,18 @@ async def trace_stream(id: str, last_ts: int = 0, last_seq: int = -1):
                     last_ts = max(last_ts, it.get("ts", 0))
                     last_seq = max(last_seq, it.get("seq", -1))
                     yield _sse_format("trace", json.dumps(it))
+                last_heartbeat = time.monotonic()
+            # heartbeat every 10s to keep connection alive through proxies
+            now = time.monotonic()
+            if now - last_heartbeat > 10.0:
+                yield _sse_format("ping", "{}")
+                last_heartbeat = now
             # brief sleep to avoid busy loop
             await asyncio.sleep(0.35)
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    })
 
 @app.get("/api/log_poll")
 async def log_poll(id: str, last_ts: int = 0, last_seq: int = -1):
@@ -242,6 +254,8 @@ async def log_stream(id: str, last_ts: int = 0, last_seq: int = -1):
     """Server-Sent Events stream for console log lines."""
     async def event_generator():
         nonlocal last_ts, last_seq
+        yield _sse_format("ping", "{}")
+        last_heartbeat = time.monotonic()
         while True:
             with _LOG_LOCK:
                 items = _LOG_STREAMS.get(id, [])
@@ -254,14 +268,25 @@ async def log_stream(id: str, last_ts: int = 0, last_seq: int = -1):
                     last_ts = max(last_ts, it.get("ts", 0))
                     last_seq = max(last_seq, it.get("seq", -1))
                     yield _sse_format("log", json.dumps(it))
+                last_heartbeat = time.monotonic()
+            now = time.monotonic()
+            if now - last_heartbeat > 10.0:
+                yield _sse_format("ping", "{}")
+                last_heartbeat = now
             await asyncio.sleep(0.25)
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    })
 
 @app.get("/api/job_stream")
 async def job_stream(id: str, last_ts: int = 0, last_seq: int = -1):
     """Server-Sent Events stream for job status/result updates."""
     async def event_generator():
         nonlocal last_ts, last_seq
+        # Initial ping to keep connection and flush headers
+        yield _sse_format("ping", "{}")
+        last_heartbeat = time.monotonic()
         # Emit any buffered items immediately, then keep streaming
         while True:
             with _STATUS_LOCK:
@@ -279,8 +304,16 @@ async def job_stream(id: str, last_ts: int = 0, last_seq: int = -1):
                 last_item = new_items[-1]
                 if last_item.get("status") in ("done", "error"):
                     return
+                last_heartbeat = time.monotonic()
+            now = time.monotonic()
+            if now - last_heartbeat > 10.0:
+                yield _sse_format("ping", "{}")
+                last_heartbeat = now
             await asyncio.sleep(0.25)
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+    })
 
 @app.get("/api/job_status")
 async def job_status(id: str):

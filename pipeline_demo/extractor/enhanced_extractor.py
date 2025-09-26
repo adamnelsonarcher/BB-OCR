@@ -96,7 +96,8 @@ class EnhancedBookMetadataExtractor:
 
     def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
                  crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True,
-                 edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 300.0):
+                 edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 300.0,
+                 max_ocr_chars_per_image: int = 330):
         """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
 
         Args:
@@ -117,6 +118,8 @@ class EnhancedBookMetadataExtractor:
         self.crop_margin = int(max(0, crop_margin))
         self.edge_crop_percent = float(max(0.0, min(45.0, edge_crop_percent)))
         self.ollama_timeout_seconds = float(max(5.0, ollama_timeout_seconds))
+        # Per-image OCR length cap (texts longer than this are ignored for context)
+        self.max_ocr_chars_per_image = int(max(1, max_ocr_chars_per_image))
         self._trace_sink: Optional[Callable[[Dict[str, Any]], None]] = None
 
         # Reuse HTTP connections
@@ -558,8 +561,22 @@ class EnhancedBookMetadataExtractor:
                 step_log = trace.get("steps") if capture_trace else None
                 ocr_text = self.extract_text_with_ocr(image_paths[idx], trace_image=trace_img_dict, trace_global=trace if capture_trace else None, step_log=step_log)
                 if ocr_text.strip():
-                    ocr_texts.append(ocr_text)
-                    print(f"    ✅ OCR text added to context")
+                    text_len = len(ocr_text)
+                    if text_len > self.max_ocr_chars_per_image:
+                        print(f"    ⏭️  Skipping OCR text for context (length {text_len} > {self.max_ocr_chars_per_image})")
+                        if capture_trace:
+                            try:
+                                trace["steps"].append({"step": "ocr_skip_long", "image_index": idx, "info": {"chars": text_len, "limit": self.max_ocr_chars_per_image}})
+                                # Mark image trace for UI awareness
+                                if isinstance(trace_img_dict, dict):
+                                    trace_img_dict["ocr_skipped_long"] = True
+                                    trace_img_dict["ocr_chars"] = text_len
+                                self._emit_trace(trace)
+                            except Exception:
+                                pass
+                    else:
+                        ocr_texts.append(ocr_text)
+                        print(f"    ✅ OCR text added to context ({text_len} chars)")
                 else:
                     print(f"    ⚠️  No usable OCR text from this image")
             else:
