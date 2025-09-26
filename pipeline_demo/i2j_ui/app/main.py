@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional, List
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import requests
@@ -591,6 +591,23 @@ async def processed_load_alias(path: str):
 @app.post("/lookup")
 async def lookup_alias(payload: PricingLookupPayload):
 	return await pricing_lookup(payload)
+
+
+@app.get("/pricing_embed")
+async def pricing_embed():
+	# Serve pricing static index.html but rewrite absolute /static references to /pricing_static
+	index_path = os.path.join(PRICING_STATIC_DIR, "index.html")
+	if not os.path.isfile(index_path):
+		raise HTTPException(status_code=404, detail="pricing index not found")
+	try:
+		with open(index_path, 'r', encoding='utf-8') as f:
+			html = f.read()
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
+	# Rewrite only href/src that start with /static/
+	html = html.replace('href="/static/', 'href="/pricing_static/')
+	html = html.replace("src=\"/static/", "src=\"/pricing_static/")
+	return HTMLResponse(content=html, media_type="text/html")
 
 
 # Pricing processed files listing/loading (mirror pricing_api UI)
