@@ -1,3 +1,4 @@
+console.log('[i2j_ui] script loaded');
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const btnCapture = document.getElementById('capture');
@@ -20,6 +21,19 @@ const consoleLogEl = document.getElementById('console-log');
 const btnAccept = document.getElementById('accept');
 const btnReject = document.getElementById('reject');
 const btnPricing = document.getElementById('pricing');
+// Tabs
+const tabs = Array.from(document.querySelectorAll('.tab'));
+const panelScanner = document.getElementById('panel-scanner');
+const panelPricing = document.getElementById('panel-pricing');
+const pricingJson = document.getElementById('pricing-json');
+const pricingProvidersWrap = document.getElementById('pricing-providers');
+const btnPricingRun = document.getElementById('pricing-run');
+const pricingOut = document.getElementById('pricing-out');
+const pricingProcessedSel = document.getElementById('pricing-processed');
+const btnPricingLoad = document.getElementById('pricing-load');
+const pricingReqTable = document.getElementById('pricing-reqTable');
+const pricingRespTable = document.getElementById('pricing-respTable');
+const pricingMergeTable = document.getElementById('pricing-mergeTable');
 const envPipeline = document.getElementById('env-pipeline');
 const queueList = document.getElementById('queue-list');
 const modelSel = document.getElementById('model');
@@ -80,6 +94,34 @@ async function init() {
   } catch (e) {
     envPipeline.textContent = 'unavailable';
   }
+
+  // Load pricing providers
+  try {
+    const resp = await fetch('/api/pricing/providers');
+    if (resp.ok && pricingProvidersWrap) {
+      const data = await resp.json();
+      const providers = data.providers || [];
+      pricingProvidersWrap.innerHTML = providers.map(p => `
+        <label><input type="checkbox" value="${p}" checked> ${p}</label>
+      `).join('');
+    }
+  } catch {}
+
+  // Load processed list for pricing
+  try {
+    const res = await fetch('/api/pricing/processed/list').then(r => r.json());
+    if (pricingProcessedSel) {
+      pricingProcessedSel.innerHTML = '';
+      const placeholder = document.createElement('option');
+      placeholder.value = ''; placeholder.textContent = res.items?.length ? 'Choose…' : 'No processed JSONs found';
+      pricingProcessedSel.appendChild(placeholder);
+      for (const it of (res.items || [])) {
+        const opt = document.createElement('option');
+        opt.value = it.path; opt.textContent = it.label;
+        pricingProcessedSel.appendChild(opt);
+      }
+    }
+  } catch {}
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
@@ -530,17 +572,31 @@ btnLoadExampleOutput.addEventListener('click', async () => {
 });
 
 btnPricing.addEventListener('click', async () => {
-  const meta = readTableToObject();
-  statusEl.textContent = 'Pricing lookup… (placeholder)';
-  const resp = await fetch('/api/pricing_lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ isbn_13: meta['isbn_13'] || null, isbn_10: meta['isbn_10'] || null, title: meta['title'] || null, authors: meta['authors'] || [] }) });
-  const data = await resp.json();
-  if (!resp.ok) {
-    statusEl.textContent = 'Pricing lookup failed';
-    return;
-  }
-  statusEl.textContent = data.message || 'Pricing lookup placeholder';
+  switchTab('pricing');
 });
 
 init();
+console.log('[i2j_ui] init called');
+
+function switchTab(name) {
+  tabs.forEach(t => {
+    t.classList.toggle('active', t.dataset.tab === name);
+  });
+  if (name === 'pricing') {
+    panelPricing.classList.remove('hidden');
+    panelPricing.classList.add('active');
+    panelScanner.classList.add('hidden');
+    panelScanner.classList.remove('active');
+  } else {
+    panelScanner.classList.remove('hidden');
+    panelScanner.classList.add('active');
+    panelPricing.classList.add('hidden');
+    panelPricing.classList.remove('active');
+  }
+}
+
+tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
+
+// pricing logic removed; iframe handles functionality
 
 

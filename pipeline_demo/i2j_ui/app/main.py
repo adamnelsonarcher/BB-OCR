@@ -20,6 +20,19 @@ PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 PIPELINE_DIR = os.path.join(PROJECT_ROOT, "extractor")
 if PIPELINE_DIR not in sys.path:
 	sys.path.insert(0, PIPELINE_DIR)
+if PROJECT_ROOT not in sys.path:
+	sys.path.insert(0, PROJECT_ROOT)
+# Ensure the inner pricing package root is importable (project_root/pricing_api)
+PRICING_PKG_ROOT = os.path.join(PROJECT_ROOT, "pricing_api")
+if PRICING_PKG_ROOT not in sys.path:
+	sys.path.insert(0, PRICING_PKG_ROOT)
+
+# Pricing aggregator (shared with pricing_api app)
+try:
+	from pricing_api.core.aggregator import aggregate_offers, DEFAULT_PROVIDERS  # type: ignore
+except Exception:
+	aggregate_offers = None  # type: ignore
+	DEFAULT_PROVIDERS = []  # type: ignore
 
 # Import the existing extractor
 try:
@@ -36,6 +49,7 @@ UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 ACCEPTED_DIR = os.path.join(DATA_DIR, "accepted")
 REJECTED_DIR = os.path.join(DATA_DIR, "rejected")
 STATIC_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "static")
+PRICING_STATIC_DIR = os.path.join(PROJECT_ROOT, "pricing_api", "static")
 
 for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR]:
 	os.makedirs(d, exist_ok=True)
@@ -252,6 +266,8 @@ app.add_middleware(
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+if os.path.isdir(PRICING_STATIC_DIR):
+	app.mount("/pricing_static", StaticFiles(directory=PRICING_STATIC_DIR), name="pricing_static")
 
 class AcceptPayload(BaseModel):
 	id: str
@@ -525,23 +541,124 @@ class PricingLookupPayload(BaseModel):
 	isbn_10: Optional[str] = None
 	title: Optional[str] = None
 	authors: Optional[List[str]] = None
+	publisher: Optional[str] = None
+	publication_date: Optional[str] = None
+	providers: Optional[List[str]] = None
+
+
+@app.get("/api/pricing/providers")
+async def pricing_providers():
+	return {"providers": [name for name, _ in (DEFAULT_PROVIDERS or [])]}
 
 
 @app.post("/api/pricing_lookup")
 async def pricing_lookup(payload: PricingLookupPayload):
-	# Placeholder implementation; integrate separately with pricing_api if needed
-	query = {
-		"isbn_13": payload.isbn_13,
-		"isbn_10": payload.isbn_10,
-		"title": payload.title,
-		"authors": payload.authors or [],
-	}
+	if aggregate_offers is None:
+		return JSONResponse(status_code=500, content={"error": "pricing aggregator unavailable"})
+	offers, errors = await aggregate_offers(
+		title=payload.title,
+		authors=payload.authors or [],
+		isbn_13=payload.isbn_13,
+		isbn_10=payload.isbn_10,
+		publisher=payload.publisher,
+		publication_date=payload.publication_date,
+		providers=payload.providers,
+		timeout_seconds=8.0,
+	)
 	return {
-		"query": query,
-		"status": "not_implemented",
-		"message": "Pricing lookup placeholder. Use the pricing API UI for aggregation.",
-		"offers": [],
+		"query": payload.model_dump(),
+		"providers": payload.providers or [name for name, _ in (DEFAULT_PROVIDERS or [])],
+		"offers": offers,
+		"errors": errors,
 	}
+
+# Compatibility endpoints to support embedded pricing static UI (absolute paths)
+@app.get("/providers")
+async def providers_alias():
+	return await pricing_providers()
+
+
+@app.get("/processed/list")
+async def processed_list_alias():
+	return await pricing_processed_list()
+
+
+@app.get("/processed/load")
+async def processed_load_alias(path: str):
+	return await pricing_processed_load(path)
+
+
+@app.post("/lookup")
+async def lookup_alias(payload: PricingLookupPayload):
+	return await pricing_lookup(payload)
+
+
+# Pricing processed files listing/loading (mirror pricing_api UI)
+def _pricing_processed_dirs() -> List[str]:
+	# Look for outputs inside extractor and accepted i2j_ui data within this repo
+	candidates = [
+		os.path.join(PROJECT_ROOT, "extractor", "output"),
+		os.path.join(PROJECT_ROOT, "extractor", "batch_output"),
+		os.path.join(PROJECT_ROOT, "i2j_ui", "data", "accepted"),
+	]
+	return [d for d in candidates if os.path.isdir(d)]
+
+
+def _pricing_allowed_path(p: str) -> bool:
+	try:
+		rp = os.path.abspath(p)
+		for base in _pricing_processed_dirs():
+			ab = os.path.abspath(base)
+			if rp.startswith(ab + os.sep) or rp == ab:
+				return True
+		return False
+	except Exception:
+		return False
+
+
+@app.get("/api/pricing/processed/list")
+async def pricing_processed_list():
+	items = []
+	for base in _pricing_processed_dirs():
+		for name in os.listdir(base):
+			if not name.lower().endswith(".json"):
+				continue
+			path = os.path.join(base, name)
+			try:
+				st = os.stat(path)
+			except Exception:
+				continue
+			label = name
+			items.append({
+				"label": label,
+				"path": path,
+				"size": st.st_size,
+				"mtime": st.st_mtime,
+				"dir": base,
+			})
+	items.sort(key=lambda x: x["mtime"], reverse=True)
+	return {"items": items}
+
+
+@app.get("/api/pricing/processed/load")
+async def pricing_processed_load(path: str):
+	if not _pricing_allowed_path(path):
+		raise HTTPException(status_code=400, detail="Invalid path")
+	try:
+		with open(path, 'r', encoding='utf-8') as f:
+			data = json.load(f)
+	except Exception as e:
+		raise HTTPException(status_code=500, detail=str(e))
+	payload = {
+		"title": data.get("title"),
+		"subtitle": data.get("subtitle"),
+		"authors": data.get("authors"),
+		"publisher": data.get("publisher"),
+		"publication_date": data.get("publication_date"),
+		"isbn_13": data.get("isbn_13"),
+		"isbn_10": data.get("isbn_10"),
+	}
+	return {"path": path, "payload": payload, "raw": data}
 
 
 @app.post("/api/accept")

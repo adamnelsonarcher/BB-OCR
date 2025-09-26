@@ -4,106 +4,120 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Image→JSON Book Scanner</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=2">
 </head>
 <body>
     <header>
-        <h1>Image→JSON Book Scanner</h1>
+        <div class="header-left">
+            <h1>BB-OCR</h1>
+            <nav class="tabs">
+                <button class="tab active" data-tab="scanner" type="button">Image→JSON Scanner</button>
+                <button class="tab" data-tab="pricing" type="button">Pricing</button>
+            </nav>
+        </div>
         <div class="env">Backend: <span id="env-pipeline"></span></div>
     </header>
 
-    <div class="grid">
-        <div class="left">
-            <section class="controls block">
-                <div class="row">
-                    <label>Model:</label>
-                    <select id="model"></select>
-                    <label>OCR:</label>
-                    <select id="ocr">
-                        <option value="easyocr" selected>easyocr</option>
-                        <option value="tesseract">tesseract</option>
-                    </select>
-                    <label><input type="checkbox" id="preproc" checked> preprocessing</label>
-                </div>
-                <div class="row">
-                    <button id="capture">Capture</button>
-                    <button id="clear-queue">Clear Queue</button>
-                    <input type="file" id="file" accept="image/*" multiple>
-                    <button id="process-queued">Process Queued</button>
-                </div>
-                <div class="row">
-                    <label>Examples:</label>
-                    <select id="examples"></select>
-                    <button id="run-example">Run Example</button>
-                    <button id="load-example-output">Load Output</button>
-                </div>
-                <div class="row">
-                    <label>Edge crop (% each side):</label>
-                    <input type="range" id="edge-crop" min="0" max="45" step="1" value="10">
-                    <span id="edge-crop-val">10%</span>
-                    <label><input type="checkbox" id="auto-crop"> auto text crop</label>
-                </div>
-            </section>
-            <section class="result block">
-                <h2>Result</h2>
-                <div id="status" class="status">Idle</div>
-                <div id="error" class="error hidden"></div>
-                <div id="meta-table"></div>
-                <details id="trace" class="trace" open>
-                    <summary>Processing Trace</summary>
-                    <h3>Live Output</h3>
-                    <table id="trace-table" class="trace-table">
-                        <thead>
-                            <tr>
-                                <th>Input image</th>
-                                <th>Processed image</th>
-                                <th>OCR output</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                    <div class="trace-grid">
-                        <div>
-                            <h3>OCR Text (all)</h3>
-                            <pre id="trace-ocr-text" class="scroll hscroll"></pre>
-                            <h3>OCR JSON (heuristic)</h3>
-                            <pre id="trace-ocr-json" class="scroll hscroll"></pre>
-                        </div>
+    <div id="panel-scanner" class="tab-panel active">
+        <div class="grid">
+            <div class="left">
+                <section class="controls block">
+                    <div class="row">
+                        <label>Model:</label>
+                        <select id="model"></select>
+                        <label>OCR:</label>
+                        <select id="ocr">
+                            <option value="easyocr" selected>easyocr</option>
+                            <option value="tesseract">tesseract</option>
+                        </select>
+                        <label><input type="checkbox" id="preproc" checked> preprocessing</label>
                     </div>
-                    <h3>Enhanced Prompt</h3>
-                    <pre id="trace-prompt" class="scroll hscroll"></pre>
-                    <h3>VLM Raw Output</h3>
-                    <pre id="trace-vlm" class="scroll hscroll"></pre>
-                    <h3>Processing Feed</h3>
-                    <div id="trace-steps" class="scroll hscroll"></div>
-                    <h3>Trace JSON (raw)</h3>
-                    <pre id="trace-json" class="scroll hscroll"></pre>
-                    <h3>Console Log</h3>
-                    <pre id="console-log" class="scroll hscroll"></pre>
-                </details>
-                <div class="actions hidden" id="actions">
-                    <button id="accept">Accept</button>
-                    <button id="reject">Reject</button>
-                    <button id="pricing">Pricing Lookup</button>
-                </div>
-            </section>
-        </div>
-        <div class="right">
-            <section class="video-panel block">
-                <div class="video-wrap">
-                    <video id="video" autoplay playsinline></video>
-                    <div class="overlay-box"></div>
-                </div>
-                <canvas id="canvas" class="hidden"></canvas>
-                <div class="queue">
-                    <h3>Capture Queue</h3>
-                    <ol id="queue-list"></ol>
-                </div>
-            </section>
+                    <div class="row">
+                        <button id="capture" type="button">Capture</button>
+                        <button id="clear-queue" type="button">Clear Queue</button>
+                        <input type="file" id="file" accept="image/*" multiple>
+                        <button id="process-queued" type="button">Process Queued</button>
+                    </div>
+                    <div class="row">
+                        <label>Examples:</label>
+                        <select id="examples"></select>
+                        <button id="run-example" type="button">Run Example</button>
+                        <button id="load-example-output" type="button">Load Output</button>
+                    </div>
+                    <div class="row">
+                        <label>Edge crop (% each side):</label>
+                        <input type="range" id="edge-crop" min="0" max="45" step="1" value="10">
+                        <span id="edge-crop-val">10%</span>
+                        <label><input type="checkbox" id="auto-crop"> auto text crop</label>
+                    </div>
+                </section>
+                <section class="result block">
+                    <h2>Result</h2>
+                    <div id="status" class="status">Idle</div>
+                    <div id="error" class="error hidden"></div>
+                    <div id="meta-table"></div>
+                    <details id="trace" class="trace" open>
+                        <summary>Processing Trace</summary>
+                        <h3>Live Output</h3>
+                        <table id="trace-table" class="trace-table">
+                            <thead>
+                                <tr>
+                                    <th>Input image</th>
+                                    <th>Processed image</th>
+                                    <th>OCR output</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <div class="trace-grid">
+                            <div>
+                                <h3>OCR Text (all)</h3>
+                                <pre id="trace-ocr-text" class="scroll hscroll"></pre>
+                                <h3>OCR JSON (heuristic)</h3>
+                                <pre id="trace-ocr-json" class="scroll hscroll"></pre>
+                            </div>
+                        </div>
+                        <h3>Enhanced Prompt</h3>
+                        <pre id="trace-prompt" class="scroll hscroll"></pre>
+                        <h3>VLM Raw Output</h3>
+                        <pre id="trace-vlm" class="scroll hscroll"></pre>
+                        <h3>Processing Feed</h3>
+                        <div id="trace-steps" class="scroll hscroll"></div>
+                        <h3>Trace JSON (raw)</h3>
+                        <pre id="trace-json" class="scroll hscroll"></pre>
+                        <h3>Console Log</h3>
+                        <pre id="console-log" class="scroll hscroll"></pre>
+                    </details>
+                    <div class="actions hidden" id="actions">
+                        <button id="accept" type="button">Accept</button>
+                        <button id="reject" type="button">Reject</button>
+                        <button id="pricing" type="button">Pricing Lookup</button>
+                    </div>
+                </section>
+            </div>
+            <div class="right">
+                <section class="video-panel block">
+                    <div class="video-wrap">
+                        <video id="video" autoplay playsinline></video>
+                        <div class="overlay-box"></div>
+                    </div>
+                    <canvas id="canvas" class="hidden"></canvas>
+                    <div class="queue">
+                        <h3>Capture Queue</h3>
+                        <ol id="queue-list"></ol>
+                    </div>
+                </section>
+            </div>
         </div>
     </div>
 
-    <script src="/static/script.js"></script>
+    <div id="panel-pricing" class="tab-panel hidden">
+        <section class="block" style="padding:0; border:0; background:transparent;">
+            <iframe class="iframe-full" src="/pricing_static/index.html"></iframe>
+        </section>
+    </div>
+
+    <script src="/static/script.js?v=3" defer></script>
 </body>
 </html>
 
