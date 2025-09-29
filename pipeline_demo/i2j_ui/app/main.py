@@ -56,6 +56,12 @@ for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR]:
 	os.makedirs(d, exist_ok=True)
 
 app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
+# Best-effort: prevent proxies from hijacking local calls to Ollama
+try:
+    os.environ.setdefault("NO_PROXY", "127.0.0.1,localhost")
+    os.environ.setdefault("no_proxy", "127.0.0.1,localhost")
+except Exception:
+    pass
 # In-memory trace streams per job id
 _TRACE_LOCK = threading.Lock()
 _TRACE_STREAMS: Dict[str, list] = {}
@@ -328,7 +334,7 @@ def _ollama_quick_ping() -> None:
         return
     try:
         # Check tags to confirm server is reachable and pick a model
-        tags = requests.get("http://localhost:11434/api/tags", timeout=2)
+        tags = requests.get("http://127.0.0.1:11434/api/tags", timeout=2)
         model: Optional[str] = None
         if tags.status_code == 200:
             models = [m.get("name") for m in tags.json().get("models", []) if m.get("name")]
@@ -338,7 +344,7 @@ def _ollama_quick_ping() -> None:
         if model:
             try:
                 requests.post(
-                    "http://localhost:11434/api/generate",
+                    "http://127.0.0.1:11434/api/generate",
                     json={"model": model, "prompt": "ping", "stream": False},
                     timeout=3,
                 )

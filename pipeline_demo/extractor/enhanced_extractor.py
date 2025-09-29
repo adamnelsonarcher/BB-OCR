@@ -107,7 +107,7 @@ class EnhancedBookMetadataExtractor:
             edge_crop_percent: Percentage [0-45] to crop from each edge (centered crop) for OCR
         """
         self.model = model
-        self.ollama_url = "http://localhost:11434/api/generate"
+        self.ollama_url = "http://127.0.0.1:11434/api/generate"
         self.ocr_engine = ocr_engine.lower()
         self.use_preprocessing = use_preprocessing
         self.crop_for_ocr = crop_for_ocr
@@ -120,6 +120,11 @@ class EnhancedBookMetadataExtractor:
 
         # Reuse HTTP connections
         self.session = requests.Session()
+        # Avoid inheriting proxy env that can break local connections on Windows
+        try:
+            self.session.trust_env = False
+        except Exception:
+            pass
         
         # Initialize OCR engines
         if self.ocr_engine == "easyocr":
@@ -200,7 +205,7 @@ class EnhancedBookMetadataExtractor:
             "stream": False
         }
         try:
-            resp = self.session.post(self.ollama_url, json=payload, timeout=10)
+            resp = self.session.post(self.ollama_url, json=payload, timeout=(2, 8))
             # Ignore content; just ensure request completes
             if resp.status_code != 200:
                 raise RuntimeError(f"Warm-up status {resp.status_code}")
@@ -652,7 +657,10 @@ class EnhancedBookMetadataExtractor:
         last_err: Optional[Exception] = None
         for attempt in range(3):
             try:
-                response = self.session.post(self.ollama_url, json=payload, timeout=self.ollama_timeout_seconds)
+                # Separate connect/read timeouts to avoid long hangs on connect
+                connect_timeout = 2.5
+                read_timeout = max(3.0, self.ollama_timeout_seconds - connect_timeout)
+                response = self.session.post(self.ollama_url, json=payload, timeout=(connect_timeout, read_timeout))
                 if response.status_code == 200:
                     break
                 else:
