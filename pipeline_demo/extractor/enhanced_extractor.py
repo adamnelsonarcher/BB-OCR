@@ -41,14 +41,10 @@ except ImportError as e:
         """Fallback function when preprocessing is not available."""
         return image_path, output_path, ["original"]
 
-# Import simple book heuristic extractor for OCR->JSON preview
-try:
-    from hueristics.book_extractor import extract_book_metadata_from_text as _heuristic_book_extract
-    HEUR_HEURISTICS_AVAILABLE = True
-except Exception:
-    HEUR_HEURISTICS_AVAILABLE = False
-    def _heuristic_book_extract(_: str) -> Dict[str, Any]:
-        return {}
+# Heuristic OCR->JSON preview removed by request; keep placeholders off
+HEUR_HEURISTICS_AVAILABLE = False
+def _heuristic_book_extract(_: str) -> Dict[str, Any]:
+    return {}
 
 # Define the JSON schema for validation
 METADATA_SCHEMA = {
@@ -746,45 +742,8 @@ class EnhancedBookMetadataExtractor:
                 "total_images": len(image_paths)
             }
 
-            # Add heuristic OCR-derived JSON (preview) to trace, if available
+            # Heuristic OCR-derived JSON removed; still attach trace if requested
             if capture_trace:
-                ocr_guess: Dict[str, Any] = {
-                    "title": None,
-                    "subtitle": None,
-                    "authors": [],
-                    "publisher": None,
-                    "publication_date": None,
-                    "isbn_10": None,
-                    "isbn_13": None,
-                    "price": {"currency": None, "amount": None},
-                }
-                try:
-                    for t in ocr_texts:
-                        guess = _heuristic_book_extract(t) if HEUR_HEURISTICS_AVAILABLE else {}
-                        if not guess:
-                            continue
-                        if not ocr_guess["title"] and guess.get("title"):
-                            ocr_guess["title"] = guess.get("title")
-                        author = guess.get("author")
-                        if author and author not in ocr_guess["authors"]:
-                            ocr_guess["authors"].append(author)
-                        pub = guess.get("publisher")
-                        if pub and not ocr_guess["publisher"]:
-                            ocr_guess["publisher"] = pub
-                        year = guess.get("year")
-                        if year and not ocr_guess["publication_date"]:
-                            ocr_guess["publication_date"] = year
-                        isbn = guess.get("isbn")
-                        if isbn and not (ocr_guess["isbn_10"] or ocr_guess["isbn_13"]):
-                            compact = str(isbn).replace("-", "").replace(" ", "")
-                            if len(compact) == 13:
-                                ocr_guess["isbn_13"] = compact
-                            elif len(compact) == 10:
-                                ocr_guess["isbn_10"] = compact
-                except Exception:
-                    pass
-                trace["ocr_json"] = ocr_guess
-                trace["steps"].append({"step": "ocr_json"})
                 metadata["_trace"] = trace
                 self._emit_trace(trace)
             
