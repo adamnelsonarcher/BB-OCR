@@ -386,7 +386,7 @@ async def job_result(id: str):
             return JSONResponse(status_code=202, content={"status": status})
         return {"id": id, "status": status, "metadata": job.get("metadata"), "files": job.get("files", [])}
 
-def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool) -> None:
+def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool, llm_backend: str = "ollama") -> None:
 	_JOB_SEM.acquire()
 	try:
 		with _JOBS_LOCK:
@@ -402,7 +402,7 @@ def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_e
 		sys.stdout = _JobLogTee(_orig_out, job_id)
 		sys.stderr = _JobLogTee(_orig_err, job_id)
 		try:
-			extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr)
+			extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr, llm_backend=llm_backend)
 			ocr_indices = _compute_default_ocr_indices(len(image_paths))
 			metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
 		finally:
@@ -488,7 +488,7 @@ async def list_models():
 		]}
 
 
-def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, edge_crop: float = 0.0, auto_crop: bool = False) -> "EnhancedBookMetadataExtractor":
+def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, edge_crop: float = 0.0, auto_crop: bool = False, llm_backend: str = "ollama") -> "EnhancedBookMetadataExtractor":
 	if EnhancedBookMetadataExtractor is None:
 		raise RuntimeError(f"Failed to import pipeline: {IMPORT_ERROR}")
 	try:
@@ -499,7 +499,8 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 			edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
 			crop_for_ocr=bool(auto_crop),
 			warm_model=False,
-			ollama_timeout_seconds=180.0,
+            ollama_timeout_seconds=180.0,
+            llm_backend=str(llm_backend or "ollama"),
 		)
 	except Exception:
 		# Fallback to tesseract if easyocr fails to init
@@ -512,7 +513,7 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 				crop_for_ocr=bool(auto_crop),
 				warm_model=False,
 				ollama_timeout_seconds=180.0,
-			)
+            )
 		raise
 
 
@@ -554,6 +555,7 @@ async def process_image(
 	use_preprocessing: bool = Form(True),
 	edge_crop: float = Form(0.0),
 	crop_ocr: bool = Form(True),
+    llm_backend: str = Form("ollama"),
 ):
 	if image.content_type is None or not image.content_type.startswith("image/"):
 		raise HTTPException(status_code=400, detail="Uploaded file must be an image")
@@ -577,7 +579,7 @@ async def process_image(
 		_LOG_SEQ[item_id] = 0
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, [saved_path]), kwargs={
-		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr)
+		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama')
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
@@ -595,6 +597,7 @@ async def process_images(
 	use_preprocessing: bool = Form(True),
 	edge_crop: float = Form(0.0),
 	crop_ocr: bool = Form(True),
+    llm_backend: str = Form("ollama"),
 ):
 	if not images:
 		raise HTTPException(status_code=400, detail="No images uploaded")
@@ -622,7 +625,7 @@ async def process_images(
 		_LOG_SEQ[item_id] = 0
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, saved_paths), kwargs={
-		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr)
+		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama')
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
@@ -661,6 +664,7 @@ class ExamplePayload(BaseModel):
 	use_preprocessing: Optional[bool] = True
 	edge_crop: Optional[float] = 0.0
 	crop_ocr: Optional[bool] = True
+	llm_backend: Optional[str] = "ollama"
 
 
 @app.post("/api/process_example")
@@ -696,7 +700,7 @@ async def process_example(payload: ExamplePayload):
 		_STATUS_STREAMS[job_id] = []
 		_STATUS_SEQ[job_id] = 0
 	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
-		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False)
+		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False), 'llm_backend': str(payload.llm_backend or 'ollama')
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:

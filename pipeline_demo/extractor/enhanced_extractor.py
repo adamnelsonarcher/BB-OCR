@@ -93,7 +93,7 @@ class EnhancedBookMetadataExtractor:
     def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
                  crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True,
                  edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 300.0,
-                 max_ocr_chars_per_image: int = 330):
+                 max_ocr_chars_per_image: int = 330, llm_backend: str = "ollama"):
         """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
 
         Args:
@@ -114,6 +114,7 @@ class EnhancedBookMetadataExtractor:
         self.crop_margin = int(max(0, crop_margin))
         self.edge_crop_percent = float(max(0.0, min(45.0, edge_crop_percent)))
         self.ollama_timeout_seconds = float(max(5.0, ollama_timeout_seconds))
+        self.llm_backend = (llm_backend or "ollama").lower()
         # Per-image OCR length cap (texts longer than this are ignored for context)
         self.max_ocr_chars_per_image = int(max(1, max_ocr_chars_per_image))
         self._trace_sink: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -633,64 +634,58 @@ class EnhancedBookMetadataExtractor:
             trace["steps"].append({"step": "encode_images", "info": {"count": len(images)}})
             self._emit_trace(trace)
         
-        # Create the request payload
-        payload = {
-            "model": self.model,
-            "prompt": enhanced_prompt,
-            "stream": False,
-            "images": images
-        }
-        
-        print(f"\n🚀 Sending request to Ollama...")
-        print(f"   • Model: {self.model}")
-        print(f"   • Images: {len(images)}")
-        print(f"   • Prompt length: {len(enhanced_prompt)} characters")
-        print(f"   • OCR context included: {'Yes' if ocr_texts else 'No'}")
-        
-        
-        # Send request to Ollama
+        # Send request via selected LLM backend
         if capture_trace:
-            trace["steps"].append({"step": "request_sent", "info": {"model": self.model}})
+            trace["steps"].append({"step": "request_sent", "info": {"model": self.model, "backend": self.llm_backend}})
             self._emit_trace(trace)
-        # Robust request with retries/backoff to avoid hanging forever
-        response = None
-        last_err: Optional[Exception] = None
-        for attempt in range(3):
-            try:
-                # Separate connect/read timeouts to avoid long hangs on connect
-                connect_timeout = 2.5
-                read_timeout = max(3.0, self.ollama_timeout_seconds - connect_timeout)
-                response = self.session.post(self.ollama_url, json=payload, timeout=(connect_timeout, read_timeout))
-                if response.status_code == 200:
-                    break
-                else:
-                    raise Exception(f"Ollama HTTP {response.status_code}")
-            except Exception as e:
-                last_err = e
-                wait = 1.0 * (attempt + 1)
-                print(f"   ⚠️ Ollama request failed (attempt {attempt+1}/3): {e}; retrying in {wait:.1f}s")
+        response_text = ""
+        if self.llm_backend == "ollama":
+            print(f"\n🚀 Sending request to Ollama...")
+            print(f"   • Model: {self.model}")
+            print(f"   • Images: {len(images)}")
+            print(f"   • Prompt length: {len(enhanced_prompt)} characters")
+            print(f"   • OCR context included: {'Yes' if ocr_texts else 'No'}")
+            payload = {
+                "model": self.model,
+                "prompt": enhanced_prompt,
+                "stream": False,
+                "images": images
+            }
+            response = None
+            last_err: Optional[Exception] = None
+            for attempt in range(3):
                 try:
-                    import time as _t
-                    _t.sleep(wait)
-                except Exception:
-                    pass
-        if response is None or response.status_code != 200:
-            raise Exception(f"Error from Ollama API: {last_err}")
-        
-        if response.status_code != 200:
-            print(f"❌ Ollama API error: {response.status_code}")
-            raise Exception(f"Error from Ollama API: {response.text}")
-        
-        print(f"✅ Received response from Ollama")
-        
-        # Extract the response
-        # Guard against malformed/streaming artifacts
-        try:
-            result = response.json()
-        except Exception as e:
-            txt = response.text[:2000]
-            raise Exception(f"Failed to parse Ollama JSON: {e}; prefix=\n{txt}")
-        response_text = result.get("response", "")
+                    connect_timeout = 2.5
+                    read_timeout = max(3.0, self.ollama_timeout_seconds - connect_timeout)
+                    response = self.session.post(self.ollama_url, json=payload, timeout=(connect_timeout, read_timeout))
+                    if response.status_code == 200:
+                        break
+                    else:
+                        raise Exception(f"Ollama HTTP {response.status_code}")
+                except Exception as e:
+                    last_err = e
+                    wait = 1.0 * (attempt + 1)
+                    print(f"   ⚠️ Ollama request failed (attempt {attempt+1}/3): {e}; retrying in {wait:.1f}s")
+                    try:
+                        import time as _t
+                        _t.sleep(wait)
+                    except Exception:
+                        pass
+            if response is None or response.status_code != 200:
+                raise Exception(f"Error from Ollama API: {last_err}")
+            try:
+                result = response.json()
+            except Exception as e:
+                txt = response.text[:2000]
+                raise Exception(f"Failed to parse Ollama JSON: {e}; prefix=\n{txt}")
+            response_text = result.get("response", "")
+            print(f"✅ Received response from Ollama")
+        else:
+            # External APIs via llm_providers
+            print(f"\n🚀 Sending request to {self.llm_backend}...")
+            from llm_providers.client import create_llm_client
+            client = create_llm_client(self.llm_backend, session=self.session)
+            response_text = client.generate(self.model, enhanced_prompt, images, timeout_seconds=self.ollama_timeout_seconds)
         
         print(f"\n📄 OLLAMA RAW RESPONSE:")
         print("="*80)
