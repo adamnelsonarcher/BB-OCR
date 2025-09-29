@@ -37,6 +37,7 @@ const pricingMergeTable = document.getElementById('pricing-mergeTable');
 const envPipeline = document.getElementById('env-pipeline');
 const queueList = document.getElementById('queue-list');
 const modelSel = document.getElementById('model');
+const modelWrap = document.getElementById('model-wrap');
 const backendSel = document.getElementById('backend');
 const ocrSel = document.getElementById('ocr');
 const preprocChk = document.getElementById('preproc');
@@ -147,6 +148,24 @@ async function init() {
       modelSel.appendChild(opt);
     }
   } catch {}
+// Toggle model selector visibility and default remote model by backend
+function updateBackendUI() {
+  const b = (backendSel.value || 'ollama').toLowerCase();
+  const isOllama = b === 'ollama';
+  if (modelWrap) modelWrap.style.display = isOllama ? '' : 'none';
+  if (!isOllama) {
+    // Apply reasonable defaults when remote
+    if (b === 'openai') {
+      // Prefer a vision-capable light model
+      modelSel.value = 'gpt-4o-mini';
+    } else if (b === 'gemini') {
+      modelSel.value = 'gemini-1.5-flash';
+    }
+  }
+}
+backendSel.addEventListener('change', updateBackendUI);
+updateBackendUI();
+
 
   // Load examples
   try {
