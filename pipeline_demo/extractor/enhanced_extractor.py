@@ -366,10 +366,10 @@ class EnhancedBookMetadataExtractor:
                             self._emit_trace(trace_global)
             except Exception as e:
                 print(f"    ⚠️  Edge-cropping failed: {e}")
-        # If no edge crop or still using original, optionally try auto-crop of text region
-        if self.crop_for_ocr and crop_image_path == preprocessed_image_path:
+        # Optionally try auto-crop of text region on the current crop (after edge-crop if any)
+        if self.crop_for_ocr:
             try:
-                cropped = self._auto_crop_text_region(preprocessed_image_path, self.crop_margin)
+                cropped = self._auto_crop_text_region(crop_image_path, self.crop_margin)
                 if cropped and os.path.exists(cropped):
                     crop_image_path = cropped
                     temp_files_to_cleanup.append(cropped)
@@ -381,7 +381,7 @@ class EnhancedBookMetadataExtractor:
                         if trace_global is not None:
                             self._emit_trace(trace_global)
                 else:
-                    print(f"    ⚠️  Auto-cropping produced no improvement; using original for OCR")
+                    print(f"    ⚠️  Auto-cropping produced no improvement; using current crop for OCR")
             except Exception as e:
                 print(f"    ⚠️  Auto-cropping failed: {e}")
         

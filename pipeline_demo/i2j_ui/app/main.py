@@ -654,7 +654,7 @@ class ExamplePayload(BaseModel):
 	ocr_engine: Optional[str] = "easyocr"
 	use_preprocessing: Optional[bool] = True
 	edge_crop: Optional[float] = 0.0
-	crop_ocr: Optional[bool] = False
+	crop_ocr: Optional[bool] = True
 
 
 @app.post("/api/process_example")

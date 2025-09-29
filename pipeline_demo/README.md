@@ -17,11 +17,9 @@ pipeline_demo/
 │   └── prompts/
 │       └── enhanced_book_metadata_prompt.txt
 ├── ocr_testing/
-│   ├── preprocessing/
-│   │   └── image_preprocessor.py
-│   └── hueristics/
-│       ├── extractor.py
-│       └── book_extractor.py
+│   └── preprocessing/
+│       └── image_preprocessor.py
+│   
 ├── pricing_api/
 │   ├── app/
 │   │   └── main.py
