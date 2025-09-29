@@ -385,17 +385,43 @@ class EnhancedBookMetadataExtractor:
             except Exception as e:
                 print(f"    ⚠️  Auto-cropping failed: {e}")
         
+        # Optionally downscale the crop for faster OCR while preserving readability
+        ocr_input_path = crop_image_path
+        try:
+            try:
+                img = Image.open(crop_image_path)
+                # Target a reasonable max dimension for OCR speed
+                max_dim = 1600
+                if max(img.size) > max_dim:
+                    img = img.convert("RGB")
+                    img.thumbnail((max_dim, max_dim))
+                    from io import BytesIO
+                    buf = BytesIO()
+                    img.save(buf, format="JPEG", quality=90)
+                    data = buf.getvalue()
+                    temp_dir = self._get_temp_dir()
+                    base_name = os.path.splitext(os.path.basename(crop_image_path))[0]
+                    ocr_input_path = os.path.join(temp_dir, f"{base_name}_ocr_ds.jpg")
+                    with open(ocr_input_path, "wb") as f:
+                        f.write(data)
+                    temp_files_to_cleanup.append(ocr_input_path)
+                    print(f"    🗜️  Downscaled image for OCR: {os.path.basename(ocr_input_path)}")
+            except Exception as _:
+                ocr_input_path = crop_image_path
+        except Exception:
+            ocr_input_path = crop_image_path
+
         # Extract text using selected OCR engine
         text = ""
         print(f"    🤖 Running {self.ocr_engine.upper()} OCR...")
         try:
             if self.ocr_engine == "easyocr":
                 # Use a smaller EasyOCR configuration to reduce memory usage
-                results = self.easyocr_reader.readtext(crop_image_path, paragraph=False, batch_size=1, workers=0)
+                results = self.easyocr_reader.readtext(ocr_input_path, paragraph=False, batch_size=1, workers=0)
                 text = " ".join([result[1] for result in results])
                 print(f"    ✓ EasyOCR found {len(results)} text regions")
             elif self.ocr_engine == "tesseract":
-                image = Image.open(crop_image_path)
+                image = Image.open(ocr_input_path)
                 text = pytesseract.image_to_string(image)
                 print(f"    ✓ Tesseract OCR completed")
             else:

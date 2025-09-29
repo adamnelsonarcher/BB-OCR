@@ -547,7 +547,7 @@ async def process_image(
 	ocr_engine: str = Form("easyocr"),
 	use_preprocessing: bool = Form(True),
 	edge_crop: float = Form(0.0),
-	crop_ocr: bool = Form(False),
+	crop_ocr: bool = Form(True),
 ):
 	if image.content_type is None or not image.content_type.startswith("image/"):
 		raise HTTPException(status_code=400, detail="Uploaded file must be an image")
@@ -588,7 +588,7 @@ async def process_images(
 	ocr_engine: str = Form("easyocr"),
 	use_preprocessing: bool = Form(True),
 	edge_crop: float = Form(0.0),
-	crop_ocr: bool = Form(False),
+	crop_ocr: bool = Form(True),
 ):
 	if not images:
 		raise HTTPException(status_code=400, detail="No images uploaded")
