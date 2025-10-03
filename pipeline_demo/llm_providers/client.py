@@ -94,6 +94,10 @@ class GeminiClient(LLMClient):
             pass
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
         self.base_url = os.getenv("GOOGLE_API_BASE", "https://generativelanguage.googleapis.com")
+        # Debug fields for last attempt
+        self.last_url: Optional[str] = None
+        self.last_model: Optional[str] = None
+        self.tried_models: list[str] = []
 
     def generate(self, model: str, prompt: str, images_b64: List[str], *, timeout_seconds: float = 60.0) -> str:
         if not self.api_key:
@@ -101,6 +105,9 @@ class GeminiClient(LLMClient):
         # v1beta generateContent
         target_model = (model or "gemini-1.5-flash").strip()
         url = f"{self.base_url}/v1beta/models/{target_model}:generateContent?key={self.api_key}"
+        self.tried_models = [target_model]
+        self.last_url = url
+        self.last_model = target_model
         parts: List[dict] = [{"text": prompt}]
         for img_b64 in images_b64:
             parts.append({
@@ -112,55 +119,32 @@ class GeminiClient(LLMClient):
         payload = {
             "contents": [{"parts": parts}],
         }
-        def _post(u: str) -> requests.Response:
+        def _post(u: str, m: str) -> requests.Response:
+            self.last_url = u
+            self.last_model = m
+            if m not in self.tried_models:
+                self.tried_models.append(m)
             return self.session.post(u, json=payload, timeout=timeout_seconds)
 
-        resp = _post(url)
-        # If model path returns 404, attempt to resolve a valid model name dynamically
+        resp = _post(url, target_model)
+        # If model path returns 404, try constrained fallbacks within supported set
         if resp.status_code == 404:
-            # Try '-latest' variant first
-            if not target_model.endswith("-latest"):
-                alt = f"{target_model}-latest"
-                alt_url = f"{self.base_url}/v1beta/models/{alt}:generateContent?key={self.api_key}"
-                alt_resp = _post(alt_url)
-                if alt_resp.status_code != 404:
-                    resp = alt_resp
-                else:
-                    # List available models and pick the closest match
-                    try:
-                        lm = self.session.get(f"{self.base_url}/v1beta/models?key={self.api_key}", timeout=timeout_seconds)
-                        if lm.status_code == 200:
-                            names = [m.get("name", "").split("/")[-1] for m in (lm.json().get("models") or [])]
-                            # Prefer exact match, else startswith, else contains
-                            best = None
-                            if target_model in names:
-                                best = target_model
-                            else:
-                                for n in names:
-                                    if n.startswith(target_model):
-                                        best = n; break
-                                if best is None:
-                                    for n in names:
-                                        if target_model.replace("-latest", "") in n:
-                                            best = n; break
-                            if best:
-                                url2 = f"{self.base_url}/v1beta/models/{best}:generateContent?key={self.api_key}"
-                                resp = _post(url2)
-                    except Exception:
-                        pass
+            preferred = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro", "gemini-2.0-flash"]
+            for m in preferred:
+                if m == target_model:
+                    continue
+                u = f"{self.base_url}/v1beta/models/{m}:generateContent?key={self.api_key}"
+                r = _post(u, m)
+                if r.status_code != 404:
+                    resp = r
+                    break
         # Handle quota/policy gracefully: 403/429 → attempt softer fallback
         if resp.status_code in (403, 429):
-            # Try a lighter/cheaper variant first
-            try_models = []
-            base = target_model.replace("-latest", "")
-            # Prefer flash variants for lower tier
-            if "2.5" in base:
-                try_models = ["gemini-2.5-flash", "gemini-1.5-flash"]
-            else:
-                try_models = ["gemini-1.5-flash"]
+            # Try allowed lighter/cheaper variants first (restricted to supported set)
+            try_models = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.0-flash"]
             for m in try_models:
                 u = f"{self.base_url}/v1beta/models/{m}:generateContent?key={self.api_key}"
-                r = _post(u)
+                r = _post(u, m)
                 if r.status_code < 400:
                     resp = r
                     break

@@ -155,8 +155,8 @@ async function init() {
   function enforceModelByBackend() {
     const b = (backendSel.value || 'ollama').toLowerCase();
     if (b === 'gemini') {
-      // Default to a callable Gemini id
-      const preferred = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+      // Default to a callable Gemini id (1.5 deprecated -> removed)
+      const preferred = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro', 'gemini-2.0-flash'];
       const current = Array.from(modelSel.options).map(o => o.value);
       const pick = preferred.find(p => current.includes(p)) || current[0];
       if (pick) modelSel.value = pick;
@@ -172,15 +172,15 @@ async function init() {
     const b = (backend || 'ollama').toLowerCase();
     modelSel.innerHTML = '';
     if (b === 'gemini') {
-      // Only include callable Gemini ids
-      const gemModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+      // Only include supported Gemini ids (drop 1.5 variants)
+      const gemModels = ['gemini-2.5-flash', 'gemini-flash-latest', 'gemini-2.5-pro', 'gemini-2.0-flash'];
       for (const m of gemModels) {
         const opt = document.createElement('option');
         opt.value = m; opt.textContent = m;
         modelSel.appendChild(opt);
       }
       modelSel.value = 'gemini-2.5-flash';
-      appendUiLog('[ui] backend=gemini → model options set to 2.5/1.5 flash/pro');
+      appendUiLog('[ui] backend=gemini → model options set to 2.5/pro/flash-latest/2.0');
       return;
     }
     if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
