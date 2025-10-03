@@ -148,6 +148,22 @@ class GeminiClient(LLMClient):
                                 resp = _post(url2)
                     except Exception:
                         pass
+        # Handle quota/policy gracefully: 403/429 → attempt softer fallback
+        if resp.status_code in (403, 429):
+            # Try a lighter/cheaper variant first
+            try_models = []
+            base = target_model.replace("-latest", "")
+            # Prefer flash variants for lower tier
+            if "2.5" in base:
+                try_models = ["gemini-2.5-flash", "gemini-1.5-flash"]
+            else:
+                try_models = ["gemini-1.5-flash"]
+            for m in try_models:
+                u = f"{self.base_url}/v1beta/models/{m}:generateContent?key={self.api_key}"
+                r = _post(u)
+                if r.status_code < 400:
+                    resp = r
+                    break
         resp.raise_for_status()
         data = resp.json()
         try:

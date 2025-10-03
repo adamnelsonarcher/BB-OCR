@@ -155,8 +155,11 @@ async function init() {
   function enforceModelByBackend() {
     const b = (backendSel.value || 'ollama').toLowerCase();
     if (b === 'gemini') {
-      // Restore user's request: default to gemini-2.5
-      modelSel.value = 'gemini-2.5';
+      // Default to a callable Gemini id
+      const preferred = ['gemini-2.5-flash', 'gemini-1.5-flash'];
+      const current = Array.from(modelSel.options).map(o => o.value);
+      const pick = preferred.find(p => current.includes(p)) || current[0];
+      if (pick) modelSel.value = pick;
     } else if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
       modelSel.value = 'gpt-4o';
     }
@@ -169,15 +172,15 @@ async function init() {
     const b = (backend || 'ollama').toLowerCase();
     modelSel.innerHTML = '';
     if (b === 'gemini') {
-      // Include 2.5 and 1.5 variants; backend will auto-resolve if needed
-      const gemModels = ['gemini-2.5', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+      // Only include callable Gemini ids
+      const gemModels = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-1.5-flash', 'gemini-1.5-pro'];
       for (const m of gemModels) {
         const opt = document.createElement('option');
         opt.value = m; opt.textContent = m;
         modelSel.appendChild(opt);
       }
-      modelSel.value = 'gemini-2.5';
-      appendUiLog('[ui] backend=gemini → model options set to 2.5 + 1.5');
+      modelSel.value = 'gemini-2.5-flash';
+      appendUiLog('[ui] backend=gemini → model options set to 2.5/1.5 flash/pro');
       return;
     }
     if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
@@ -789,8 +792,6 @@ function switchTab(name) {
 
 tabs.forEach(t => t.addEventListener('click', () => switchTab(t.dataset.tab)));
 
-// pricing logic removed; iframe handles functionality
-// Cleanup open SSE streams on tab close or reload
 window.addEventListener('beforeunload', () => {
   try { if (traceEventSource) traceEventSource.close(); } catch (e) {}
   try { if (logEventSource) logEventSource.close(); } catch (e) {}

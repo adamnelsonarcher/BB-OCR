@@ -555,28 +555,28 @@ async def test_model(payload: ModelTestPayload):
 	bad = _validate_backend_model(backend, model)
 	if bad:
 		return JSONResponse(status_code=400, content={"ok": False, "backend": backend, "model": model, "error": bad})
-	# Run a lightweight request
+    # Run a lightweight request
 	try:
 		if backend == "ollama":
 			resp = requests.post(
 				"http://127.0.0.1:11434/api/generate",
-				json={"model": model or "gemma3:4b", "prompt": "ping", "stream": False},
+                json={"model": model or "gemma3:4b", "prompt": "ping", "stream": False},
 				timeout=(2.5, 6.0),
 			)
 			ok = (resp.status_code == 200)
-			return {"ok": bool(ok), "backend": backend, "model": (model or "gemma3:4b"), "status": resp.status_code, "detail": (resp.json().get("response", "") if ok else resp.text[:200])}
+            return {"ok": bool(ok), "backend": backend, "model": (model or "gemma3:4b"), "status": resp.status_code, "prompt": "ping", "detail": (resp.json().get("response", "") if ok else resp.text[:200])}
 		# Remote providers via llm_providers
 		try:
 			from llm_providers.client import create_llm_client
 		except Exception as e:
-			return JSONResponse(status_code=500, content={"ok": False, "backend": backend, "model": model, "error": f"llm client import failed: {e}"})
+            return JSONResponse(status_code=500, content={"ok": False, "backend": backend, "model": model, "prompt": "ping", "error": f"llm client import failed: {e}"})
 		client = create_llm_client(backend)
-		out = client.generate(model, "health check", [], timeout_seconds=12.0)
-		return {"ok": True, "backend": backend, "model": model, "detail": (out[:200] if isinstance(out, str) else str(type(out))) }
+        out = client.generate(model, "ping", [], timeout_seconds=12.0)
+        return {"ok": True, "backend": backend, "model": model, "prompt": "ping", "detail": (out[:200] if isinstance(out, str) else str(type(out))) }
 	except requests.exceptions.RequestException as re:
-		return JSONResponse(status_code=502, content={"ok": False, "backend": backend, "model": model, "error": str(re)[:300]})
+        return JSONResponse(status_code=502, content={"ok": False, "backend": backend, "model": model, "prompt": "ping", "error": str(re)[:300]})
 	except Exception as e:
-		return JSONResponse(status_code=500, content={"ok": False, "backend": backend, "model": model, "error": str(e)[:300]})
+        return JSONResponse(status_code=500, content={"ok": False, "backend": backend, "model": model, "prompt": "ping", "error": str(e)[:300]})
 
 
 def _find_books_dir() -> Optional[str]:
