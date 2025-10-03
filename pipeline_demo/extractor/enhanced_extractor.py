@@ -118,6 +118,11 @@ class EnhancedBookMetadataExtractor:
         # Per-image OCR length cap (texts longer than this are ignored for context)
         self.max_ocr_chars_per_image = int(max(1, max_ocr_chars_per_image))
         self._trace_sink: Optional[Callable[[Dict[str, Any]], None]] = None
+        # Debug flag to draw auto-crop overlays and skip cropping when enabled
+        try:
+            self.debug_autocrop = str(os.getenv("BB_OCR_DEBUG_AUTOCROP", "")).strip().lower() in ("1", "true", "yes", "on")
+        except Exception:
+            self.debug_autocrop = False
 
         # Reuse HTTP connections
         self.session = requests.Session()
@@ -218,55 +223,119 @@ class EnhancedBookMetadataExtractor:
     def _auto_crop_text_region(self, image_path: str, margin: int) -> Optional[str]:
         """Detect and crop the dominant text region. Returns new image path or None if no crop.
 
-        Heuristic: threshold to text mask, close gaps, find largest contour, crop with margin.
+        Robust heuristic:
+        - Build a composite text mask using adaptive (mean/gaussian), Otsu, and gradient cues
+        - Run morphology with multiple kernel sizes to connect text lines into blocks
+        - Collect plausible text contours and union their bounding boxes
+        - Clamp the crop to avoid extreme over/under-cropping and apply margin
         """
         img = cv2.imread(image_path)
         if img is None:
             return None
         h, w = img.shape[:2]
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # Enhance contrast
+        # Light denoise + contrast to help thresholding
+        gray_blur = cv2.GaussianBlur(gray, (3,3), 0)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-        gray = clahe.apply(gray)
-        # Binary inverse so text is white
-        thr = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 35, 10)
-        # Morphologically close to connect letters into lines/blocks
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (7,3))
-        closed = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel, iterations=2)
-        # Remove small noise
-        kernel2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
-        opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kernel2, iterations=1)
-        # Find contours
-        contours, _ = cv2.findContours(opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        gray_eq = clahe.apply(gray_blur)
+        # Thresholds (binary inverse so text is white)
+        thr_mean = cv2.adaptiveThreshold(gray_eq, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 35, 10)
+        thr_gaus = cv2.adaptiveThreshold(gray_eq, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 31, 5)
+        _, thr_otsu = cv2.threshold(gray_eq, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        # Gradient cue (emphasize text edges)
+        gradx = cv2.Sobel(gray_eq, cv2.CV_16S, 1, 0, ksize=3)
+        grady = cv2.Sobel(gray_eq, cv2.CV_16S, 0, 1, ksize=3)
+        grad = cv2.convertScaleAbs(cv2.addWeighted(cv2.convertScaleAbs(gradx), 1.0, cv2.convertScaleAbs(grady), 1.0, 0))
+        _, thr_grad = cv2.threshold(grad, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Composite mask
+        mask = cv2.bitwise_or(cv2.bitwise_or(thr_mean, thr_gaus), cv2.bitwise_or(thr_otsu, thr_grad))
+        # Morphology with multiple kernels to connect text blocks
+        def morph_pass(src, kclose, kopen, kdil):
+            closed = cv2.morphologyEx(src, cv2.MORPH_CLOSE, kclose, iterations=2)
+            opened = cv2.morphologyEx(closed, cv2.MORPH_OPEN, kopen, iterations=1)
+            dilated = cv2.dilate(opened, kdil, iterations=1)
+            return dilated
+        k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (9,3))
+        k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (3,3))
+        k3 = cv2.getStructuringElement(cv2.MORPH_RECT, (11,3))
+        k4 = cv2.getStructuringElement(cv2.MORPH_RECT, (15,5))
+        variant1 = morph_pass(mask, k1, k2, k3)
+        variant2 = morph_pass(mask, k4, k2, k3)
+        merged = cv2.bitwise_or(variant1, variant2)
+        # Find contours on merged mask
+        contours, _ = cv2.findContours(merged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours:
             return None
-        # Choose largest reasonable contour by area
         img_area = float(h * w)
-        best = None
-        best_area = 0
+        # Collect plausible text boxes
+        boxes: List[Tuple[int,int,int,int]] = []
         for c in contours:
             x, y, cw, ch = cv2.boundingRect(c)
-            area = cw * ch
-            # Filter improbable regions
-            if area < 0.01 * img_area:
+            area = float(cw * ch)
+            if area < 0.004 * img_area:
                 continue
             aspect = cw / float(ch + 1e-6)
-            if 0.2 <= aspect <= 10.0:  # exclude extremely thin shapes
-                if area > best_area:
-                    best_area = area
-                    best = (x, y, cw, ch)
-        if best is None:
+            if aspect < 0.12 or aspect > 25.0:
+                continue
+            boxes.append((x, y, cw, ch))
+        if not boxes:
             return None
-        x, y, cw, ch = best
-        # Expand with margin but keep within image
-        x0 = max(0, x - margin)
-        y0 = max(0, y - margin)
-        x1 = min(w, x + cw + margin)
-        y1 = min(h, y + ch + margin)
-        # If crop is almost full image, skip to avoid extra IO
-        crop_area = float((x1 - x0) * (y1 - y0))
-        if crop_area > 0.9 * img_area:
+        # Union of boxes
+        x0 = min(b[0] for b in boxes)
+        y0 = min(b[1] for b in boxes)
+        x1 = max(b[0] + b[2] for b in boxes)
+        y1 = max(b[1] + b[3] for b in boxes)
+        # Clamp extreme sizes: inflate too-small, deflate too-large
+        area = float((x1 - x0) * (y1 - y0))
+        min_area = 0.12 * img_area
+        max_area = 0.95 * img_area
+        if area < min_area:
+            pad = int(0.03 * max(w, h))
+            x0 = max(0, x0 - pad)
+            y0 = max(0, y0 - pad)
+            x1 = min(w, x1 + pad)
+            y1 = min(h, y1 + pad)
+        elif area > max_area:
+            # tighten by selecting top contours near vertical center
+            cy = h / 2.0
+            boxes_sorted = sorted(boxes, key=lambda b: (abs((b[1]+b[3]/2.0) - cy), -b[2]*b[3]))
+            acc = []
+            acc_area = 0.0
+            for b in boxes_sorted:
+                acc.append(b)
+                acc_area = float(sum(bb[2]*bb[3] for bb in acc))
+                xx0 = min(bb[0] for bb in acc); yy0 = min(bb[1] for bb in acc)
+                xx1 = max(bb[0]+bb[2] for bb in acc); yy1 = max(bb[1]+bb[3] for bb in acc)
+                box_area = float((xx1-xx0)*(yy1-yy0))
+                if box_area <= max_area:
+                    x0, y0, x1, y1 = xx0, yy0, xx1, yy1
+                    break
+        # Apply margin and bounds
+        x0 = max(0, x0 - margin)
+        y0 = max(0, y0 - margin)
+        x1 = min(w, x1 + margin)
+        y1 = min(h, y1 + margin)
+        if x1 <= x0 or y1 <= y0:
             return None
+        
+        
+        """# Debug: draw boxes and union rect, return annotated image without cropping when enabled
+        annotated = img.copy()
+        # draw individual boxes (green)
+        try:
+            for (bx, by, bw, bh) in boxes:
+                cv2.rectangle(annotated, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 255, 0), 2)
+            # draw union box (red)
+            cv2.rectangle(annotated, (int(x0), int(y0)), (int(x1), int(y1)), (0, 0, 255), 3)
+        except Exception:
+            pass
+        temp_dir = self._get_temp_dir()
+        base = os.path.splitext(os.path.basename(image_path))[0]
+        out_path = os.path.join(temp_dir, f"{base}_autocrop_debug.png")
+        cv2.imwrite(out_path, annotated)
+        return out_path"""
+    
+    
         cropped = img[y0:y1, x0:x1]
         # Write to temp outside project tree to avoid dev server reloads
         temp_dir = self._get_temp_dir()

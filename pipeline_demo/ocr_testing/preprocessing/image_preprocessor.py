@@ -150,8 +150,8 @@ def preprocess_for_book_cover(image_path, output_path=None):
     preprocessor.to_grayscale()
     preprocessor.resize(scale_factor=1.5)
     preprocessor.denoise(strength=5)
-    preprocessor.increase_brightness(1.2)
-    preprocessor.increase_contrast(1.8)
+    preprocessor.increase_brightness(1.5)
+    preprocessor.increase_contrast(2.2)
     preprocessor.clahe(clip_limit=2.5)
     preprocessor.sharpen(amount=0.25)
     if output_path:
