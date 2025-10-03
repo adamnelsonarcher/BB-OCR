@@ -99,7 +99,8 @@ class GeminiClient(LLMClient):
         if not self.api_key:
             raise RuntimeError("GOOGLE_API_KEY (or GEMINI_API_KEY) is not set")
         # v1beta generateContent
-        url = f"{self.base_url}/v1beta/models/{model}:generateContent?key={self.api_key}"
+        target_model = (model or "gemini-1.5-flash").strip()
+        url = f"{self.base_url}/v1beta/models/{target_model}:generateContent?key={self.api_key}"
         parts: List[dict] = [{"text": prompt}]
         for img_b64 in images_b64:
             parts.append({
@@ -111,7 +112,42 @@ class GeminiClient(LLMClient):
         payload = {
             "contents": [{"parts": parts}],
         }
-        resp = self.session.post(url, json=payload, timeout=timeout_seconds)
+        def _post(u: str) -> requests.Response:
+            return self.session.post(u, json=payload, timeout=timeout_seconds)
+
+        resp = _post(url)
+        # If model path returns 404, attempt to resolve a valid model name dynamically
+        if resp.status_code == 404:
+            # Try '-latest' variant first
+            if not target_model.endswith("-latest"):
+                alt = f"{target_model}-latest"
+                alt_url = f"{self.base_url}/v1beta/models/{alt}:generateContent?key={self.api_key}"
+                alt_resp = _post(alt_url)
+                if alt_resp.status_code != 404:
+                    resp = alt_resp
+                else:
+                    # List available models and pick the closest match
+                    try:
+                        lm = self.session.get(f"{self.base_url}/v1beta/models?key={self.api_key}", timeout=timeout_seconds)
+                        if lm.status_code == 200:
+                            names = [m.get("name", "").split("/")[-1] for m in (lm.json().get("models") or [])]
+                            # Prefer exact match, else startswith, else contains
+                            best = None
+                            if target_model in names:
+                                best = target_model
+                            else:
+                                for n in names:
+                                    if n.startswith(target_model):
+                                        best = n; break
+                                if best is None:
+                                    for n in names:
+                                        if target_model.replace("-latest", "") in n:
+                                            best = n; break
+                            if best:
+                                url2 = f"{self.base_url}/v1beta/models/{best}:generateContent?key={self.api_key}"
+                                resp = _post(url2)
+                    except Exception:
+                        pass
         resp.raise_for_status()
         data = resp.json()
         try:

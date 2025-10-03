@@ -155,6 +155,7 @@ async function init() {
   function enforceModelByBackend() {
     const b = (backendSel.value || 'ollama').toLowerCase();
     if (b === 'gemini') {
+      // Restore user's request: default to gemini-2.5
       modelSel.value = 'gemini-2.5';
     } else if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
       modelSel.value = 'gpt-4o';
@@ -168,6 +169,7 @@ async function init() {
     const b = (backend || 'ollama').toLowerCase();
     modelSel.innerHTML = '';
     if (b === 'gemini') {
+      // Include 2.5 and 1.5 variants; backend will auto-resolve if needed
       const gemModels = ['gemini-2.5', 'gemini-1.5-flash', 'gemini-1.5-pro'];
       for (const m of gemModels) {
         const opt = document.createElement('option');
@@ -175,7 +177,7 @@ async function init() {
         modelSel.appendChild(opt);
       }
       modelSel.value = 'gemini-2.5';
-      appendUiLog('[ui] backend=gemini → model options set to gemini list');
+      appendUiLog('[ui] backend=gemini → model options set to 2.5 + 1.5');
       return;
     }
     if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
