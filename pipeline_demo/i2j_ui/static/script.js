@@ -108,7 +108,7 @@ async function init() {
       const data = await resp.json();
       const providers = data.providers || [];
       pricingProvidersWrap.innerHTML = providers.map(p => `
-        <label><input type="checkbox" value="${p}" checked> ${p}</label>
+        <label><input type="checkbox" value="${p}" ${p === 'abebooks' ? 'checked' : ''}> ${p}</label>
       `).join('');
     }
   } catch {}
