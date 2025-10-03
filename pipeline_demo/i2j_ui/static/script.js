@@ -43,6 +43,7 @@ const preprocChk = document.getElementById('preproc');
 const examplesSel = document.getElementById('examples');
 const btnRunExample = document.getElementById('run-example');
 const btnLoadExampleOutput = document.getElementById('load-example-output');
+const btnTestModel = document.getElementById('test-model');
 const edgeCropRange = document.getElementById('edge-crop');
 const edgeCropVal = document.getElementById('edge-crop-val');
 const autoCropChk = document.getElementById('auto-crop');
@@ -57,6 +58,7 @@ let examplesIndex = {};
 let lastId = null;
 let captureQueue = []; // Array of Blobs
 let tableRows = [];
+let ollamaModels = [];
 
 function initTraceTable(count, previews = []) {
   if (!traceTable) return;
@@ -139,14 +141,67 @@ async function init() {
   try {
     const data = await fetch('/api/models').then(r => r.json());
     const models = data.models || [];
+    ollamaModels = models;
     modelSel.innerHTML = '';
-    for (const m of models) {
+    for (const m of ollamaModels) {
       const opt = document.createElement('option');
       opt.value = m; opt.textContent = m;
       if (m.startsWith('gemma3:4b')) opt.selected = true;
       modelSel.appendChild(opt);
     }
   } catch {}
+
+  // Enforce model selection based on backend choice
+  function enforceModelByBackend() {
+    const b = (backendSel.value || 'ollama').toLowerCase();
+    if (b === 'gemini') {
+      modelSel.value = 'gemini-2.5';
+    } else if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
+      modelSel.value = 'gpt-4o';
+    }
+  }
+  backendSel.addEventListener('change', enforceModelByBackend);
+  enforceModelByBackend();
+
+  // Also update model option list to match backend
+  function setModelOptionsForBackend(backend) {
+    const b = (backend || 'ollama').toLowerCase();
+    modelSel.innerHTML = '';
+    if (b === 'gemini') {
+      const gemModels = ['gemini-2.5', 'gemini-1.5-flash', 'gemini-1.5-pro'];
+      for (const m of gemModels) {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        modelSel.appendChild(opt);
+      }
+      modelSel.value = 'gemini-2.5';
+      appendUiLog('[ui] backend=gemini → model options set to gemini list');
+      return;
+    }
+    if (b === 'openai' || b === 'gpt' || b.startsWith('gpt-')) {
+      const oaModels = ['gpt-4o', 'gpt-4o-mini'];
+      for (const m of oaModels) {
+        const opt = document.createElement('option');
+        opt.value = m; opt.textContent = m;
+        modelSel.appendChild(opt);
+      }
+      modelSel.value = 'gpt-4o';
+      appendUiLog('[ui] backend=openai → model options set to GPT-4o list');
+      return;
+    }
+    // Default: Ollama list
+    for (const m of (ollamaModels || [])) {
+      const opt = document.createElement('option');
+      opt.value = m; opt.textContent = m;
+      modelSel.appendChild(opt);
+    }
+    if (ollamaModels && ollamaModels.length) {
+      modelSel.value = ollamaModels.find(m => m.startsWith('gemma3:4b')) || ollamaModels[0];
+    }
+    appendUiLog('[ui] backend=ollama → model options set to local list');
+  }
+  backendSel.addEventListener('change', () => setModelOptionsForBackend(backendSel.value || 'ollama'));
+  setModelOptionsForBackend(backendSel.value || 'ollama');
 
   // Load examples
   try {
@@ -378,6 +433,20 @@ function startLogInterval(id, lastTs, lastSeq) {
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+// UI console logger (always available, even without a running pipeline)
+function appendUiLog(line) {
+  try {
+    if (!consoleLogEl) return;
+    const ts = new Date().toISOString();
+    const text = `[${ts}] ${String(line || '')}`;
+    consoleLogEl.textContent += (consoleLogEl.textContent ? '\n' : '') + text;
+    if (consoleLogEl.textContent.length > 10000) {
+      consoleLogEl.textContent = consoleLogEl.textContent.slice(-10000);
+    }
+    consoleLogEl.scrollTop = consoleLogEl.scrollHeight;
+  } catch {}
 }
 
 function refreshQueueList() {
@@ -661,6 +730,39 @@ btnLoadExampleOutput.addEventListener('click', async () => {
 
 btnPricing.addEventListener('click', async () => {
   switchTab('pricing');
+});
+
+btnTestModel.addEventListener('click', async () => {
+  const backend = (backendSel.value || 'ollama');
+  const model = (modelSel.value || '');
+  appendUiLog(`[test] starting: backend=${backend} model=${model}`);
+  statusEl.textContent = 'Testing model...';
+  errorEl.classList.add('hidden');
+  try {
+    const resp = await fetch('/api/test_model', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ backend, model })
+    });
+    appendUiLog(`[test] response status: ${resp.status} ${resp.statusText}`);
+    const data = await resp.json();
+    appendUiLog(`[test] response body: ${JSON.stringify({ ok: data.ok, backend: data.backend, model: data.model, status: data.status, error: data.error ? String(data.error).slice(0,200) : undefined })}`);
+    if (!resp.ok || !data.ok) {
+      statusEl.textContent = 'Model test failed';
+      errorEl.textContent = data.error || data.detail || 'Unknown error';
+      errorEl.classList.remove('hidden');
+    } else {
+      statusEl.textContent = `Model test ok (${data.backend}:${data.model})`;
+      if (consoleLogEl && data.detail) {
+        appendUiLog(`[test] detail: ${String(data.detail).slice(0, 300)}`);
+      }
+    }
+  } catch (e) {
+    statusEl.textContent = 'Model test error';
+    errorEl.textContent = String(e);
+    errorEl.classList.remove('hidden');
+    appendUiLog(`[test] exception: ${String(e)}`);
+  }
 });
 
 init();

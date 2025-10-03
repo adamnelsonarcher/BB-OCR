@@ -356,6 +356,31 @@ def _ollama_quick_ping() -> None:
         pass
 
 
+def _validate_backend_model(backend: str, model: str) -> Optional[str]:
+	"""Return error string if the backend/model combo is obviously incompatible; else None.
+
+	Examples:
+	- gemini backend cannot use Ollama model names like "gemma3:4b"
+	- openai backend cannot use Ollama model names
+	"""
+	b = (backend or "").strip().lower()
+	m = (model or "").strip()
+	if b == "gemini":
+		# Gemini models look like: gemini-1.5-flash, gemini-1.5-pro, gemini-1.5-flash-8b
+		# Clear mismatches: colon in name (Ollama tag), or known non-gemini prefixes
+		if ":" in m or m.lower().startswith(("gemma", "llava", "moondream", "gpt", "openai")):
+			return (
+				"Invalid model for Gemini. Use a Gemini model name, e.g. 'gemini-1.5-flash' or 'gemini-1.5-pro'. Currently using: " + m
+			)
+	if b in ("openai", "gpt", "gpt-4", "gpt-4o", "gpt-4o-mini"):
+		# OpenAI models: gpt-4o, gpt-4o-mini, etc.
+		if ":" in m or m.lower().startswith(("gemma", "llava", "moondream", "gemini")):
+			return (
+				"Invalid model for OpenAI. Use an OpenAI model name, e.g. 'gpt-4o-mini' or 'gpt-4o'. Currently using: " + m
+			)
+	# Ollama: allow anything; server will 404 if unknown
+	return None
+
 @app.on_event("startup")
 async def _on_startup():
     # Run the warm-check in a background thread to avoid blocking app startup
@@ -517,6 +542,43 @@ def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, ed
 		raise
 
 
+# Simple model connectivity test for current backend (no coercion)
+class ModelTestPayload(BaseModel):
+	backend: Optional[str] = None
+	model: Optional[str] = None
+
+
+@app.post("/api/test_model")
+async def test_model(payload: ModelTestPayload):
+	backend = (payload.backend or "ollama").lower()
+	model = (payload.model or "").strip()
+	bad = _validate_backend_model(backend, model)
+	if bad:
+		return JSONResponse(status_code=400, content={"ok": False, "backend": backend, "model": model, "error": bad})
+	# Run a lightweight request
+	try:
+		if backend == "ollama":
+			resp = requests.post(
+				"http://127.0.0.1:11434/api/generate",
+				json={"model": model or "gemma3:4b", "prompt": "ping", "stream": False},
+				timeout=(2.5, 6.0),
+			)
+			ok = (resp.status_code == 200)
+			return {"ok": bool(ok), "backend": backend, "model": (model or "gemma3:4b"), "status": resp.status_code, "detail": (resp.json().get("response", "") if ok else resp.text[:200])}
+		# Remote providers via llm_providers
+		try:
+			from llm_providers.client import create_llm_client
+		except Exception as e:
+			return JSONResponse(status_code=500, content={"ok": False, "backend": backend, "model": model, "error": f"llm client import failed: {e}"})
+		client = create_llm_client(backend)
+		out = client.generate(model, "health check", [], timeout_seconds=12.0)
+		return {"ok": True, "backend": backend, "model": model, "detail": (out[:200] if isinstance(out, str) else str(type(out))) }
+	except requests.exceptions.RequestException as re:
+		return JSONResponse(status_code=502, content={"ok": False, "backend": backend, "model": model, "error": str(re)[:300]})
+	except Exception as e:
+		return JSONResponse(status_code=500, content={"ok": False, "backend": backend, "model": model, "error": str(e)[:300]})
+
+
 def _find_books_dir() -> Optional[str]:
 	candidates = [
 		os.path.join(PIPELINE_DIR, "books"),
@@ -577,6 +639,10 @@ async def process_image(
 	with _LOG_LOCK:
 		_LOG_STREAMS[item_id] = []
 		_LOG_SEQ[item_id] = 0
+	# Validate backend/model combo early
+	bad = _validate_backend_model(llm_backend, model)
+	if bad:
+		return JSONResponse(status_code=400, content={"error": bad})
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, [saved_path]), kwargs={
 		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama')
@@ -623,6 +689,10 @@ async def process_images(
 	with _LOG_LOCK:
 		_LOG_STREAMS[item_id] = []
 		_LOG_SEQ[item_id] = 0
+	# Validate backend/model combo early
+	bad = _validate_backend_model(llm_backend, model)
+	if bad:
+		return JSONResponse(status_code=400, content={"error": bad})
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, saved_paths), kwargs={
 		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama')
@@ -699,6 +769,11 @@ async def process_example(payload: ExamplePayload):
 	with _STATUS_LOCK:
 		_STATUS_STREAMS[job_id] = []
 		_STATUS_SEQ[job_id] = 0
+	# Validate backend/model combo early
+	bad = _validate_backend_model(payload.llm_backend or 'ollama', payload.model or 'gemma3:4b')
+	if bad:
+		raise HTTPException(status_code=400, detail=bad)
+	
 	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
 		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False), 'llm_backend': str(payload.llm_backend or 'ollama')
 	}, daemon=True)

@@ -86,6 +86,12 @@ class OpenAIClient(LLMClient):
 class GeminiClient(LLMClient):
     def __init__(self, api_key: Optional[str] = None, session: Optional[requests.Session] = None):
         super().__init__(session=session)
+        # Load .env if available (no-op if missing)
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+        except Exception:
+            pass
         self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY") or ""
         self.base_url = os.getenv("GOOGLE_API_BASE", "https://generativelanguage.googleapis.com")
 
