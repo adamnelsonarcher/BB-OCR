@@ -39,6 +39,7 @@ const queueList = document.getElementById('queue-list');
 const modelSel = document.getElementById('model');
 const backendSel = document.getElementById('backend');
 const ocrSel = document.getElementById('ocr');
+const runOcrChk = document.getElementById('run-ocr');
 const preprocChk = document.getElementById('preproc');
 const examplesSel = document.getElementById('examples');
 const btnRunExample = document.getElementById('run-example');
@@ -487,6 +488,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
   fd.append('image', blob, filename);
   fd.append('model', modelSel.value || 'gemma3:4b');
   fd.append('ocr_engine', ocrSel.value || 'easyocr');
+  fd.append('run_ocr', runOcrChk && runOcrChk.checked ? 'true' : 'false');
   fd.append('use_preprocessing', preprocChk.checked ? 'true' : 'false');
   fd.append('edge_crop', String(Number(edgeCropRange.value || 0)));
   fd.append('crop_ocr', autoCropChk.checked ? 'true' : 'false');
@@ -550,6 +552,7 @@ async function processBatch(blobs) {
   }
   fd.append('model', modelSel.value || 'gemma3:4b');
   fd.append('ocr_engine', ocrSel.value || 'easyocr');
+  fd.append('run_ocr', runOcrChk && runOcrChk.checked ? 'true' : 'false');
   fd.append('use_preprocessing', preprocChk.checked ? 'true' : 'false');
   fd.append('edge_crop', String(Number(edgeCropRange.value || 0)));
   fd.append('crop_ocr', autoCropChk.checked ? 'true' : 'false');
@@ -670,7 +673,7 @@ btnRunExample.addEventListener('click', async () => {
     if (count > 0) initTraceTable(count, []);
   } catch {}
 
-  const resp = await fetch('/api/process_example', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ book_id: id, model: modelSel.value || 'gemma3:4b', ocr_engine: ocrSel.value || 'easyocr', use_preprocessing: preprocChk.checked, edge_crop: Number(edgeCropRange.value || 0), crop_ocr: autoCropChk.checked, llm_backend: backendSel.value || 'ollama' }) });
+  const resp = await fetch('/api/process_example', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ book_id: id, model: modelSel.value || 'gemma3:4b', ocr_engine: ocrSel.value || 'easyocr', run_ocr: runOcrChk && runOcrChk.checked, use_preprocessing: preprocChk.checked, edge_crop: Number(edgeCropRange.value || 0), crop_ocr: autoCropChk.checked, llm_backend: backendSel.value || 'ollama' }) });
   const data = await resp.json();
   if (!resp.ok) {
     statusEl.textContent = 'Error';

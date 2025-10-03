@@ -314,7 +314,7 @@ class EnhancedBookMetadataExtractor:
             with open(image_path, "rb") as f:
                 return base64.b64encode(f.read()).decode("utf-8")
     
-    def extract_text_with_ocr(self, image_path: str, trace_image: Optional[Dict[str, Any]] = None, trace_global: Optional[Dict[str, Any]] = None, *, step_log: Optional[List[Dict[str, Any]]] = None) -> str:
+    def extract_text_with_ocr(self, image_path: str, trace_image: Optional[Dict[str, Any]] = None, trace_global: Optional[Dict[str, Any]] = None, *, step_log: Optional[List[Dict[str, Any]]] = None, image_index: Optional[int] = None) -> str:
         """Extract text from an image using OCR and return text only."""
         print(f"    🔍 Starting OCR processing for: {os.path.basename(image_path)}")
         
@@ -392,14 +392,15 @@ class EnhancedBookMetadataExtractor:
         try:
             try:
                 img = Image.open(crop_image_path)
-                # Target a reasonable max dimension for OCR speed
-                max_dim = 1600
+                # Use a higher limit for non-cover pages to preserve text fidelity
+                # Cover (index 0) can be downscaled more aggressively; others keep larger size
+                max_dim = 1600 if (image_index is None or image_index == 0) else 3200
                 if max(img.size) > max_dim:
                     img = img.convert("RGB")
                     img.thumbnail((max_dim, max_dim))
                     from io import BytesIO
                     buf = BytesIO()
-                    img.save(buf, format="JPEG", quality=90)
+                    img.save(buf, format="JPEG", quality=(90 if (image_index is None or image_index == 0) else 95))
                     data = buf.getvalue()
                     temp_dir = self._get_temp_dir()
                     base_name = os.path.splitext(os.path.basename(crop_image_path))[0]
@@ -407,7 +408,7 @@ class EnhancedBookMetadataExtractor:
                     with open(ocr_input_path, "wb") as f:
                         f.write(data)
                     temp_files_to_cleanup.append(ocr_input_path)
-                    print(f"    🗜️  Downscaled image for OCR: {os.path.basename(ocr_input_path)}")
+                    print(f"    🗜️  Downscaled image for OCR ({max_dim}px): {os.path.basename(ocr_input_path)}")
             except Exception as _:
                 ocr_input_path = crop_image_path
         except Exception:
@@ -587,7 +588,7 @@ class EnhancedBookMetadataExtractor:
                     self._emit_trace(trace)
                 trace_img_dict = trace["images"][idx] if capture_trace else None
                 step_log = trace.get("steps") if capture_trace else None
-                ocr_text = self.extract_text_with_ocr(image_paths[idx], trace_image=trace_img_dict, trace_global=trace if capture_trace else None, step_log=step_log)
+                ocr_text = self.extract_text_with_ocr(image_paths[idx], trace_image=trace_img_dict, trace_global=trace if capture_trace else None, step_log=step_log, image_index=idx)
                 if ocr_text.strip():
                     text_len = len(ocr_text)
                     if text_len > self.max_ocr_chars_per_image:
@@ -622,14 +623,62 @@ class EnhancedBookMetadataExtractor:
             trace["steps"].append({"step": "build_prompt", "info": {"chars": len(enhanced_prompt)}})
             self._emit_trace(trace)
         # (trace already updated above)
-        # Encode all images for Ollama
-        print(f"\n📸 Encoding {len(image_paths)} images for vision model...")
+        # Build best-available processed inputs for VLM (preprocess → edge-crop → auto-crop)
+        model_input_paths: List[str] = []
+        model_temp_files_to_cleanup: List[str] = []
+        for idx, p in enumerate(image_paths):
+            current_path = p
+            try:
+                # Preprocessing (if available and enabled)
+                if self.use_preprocessing and PREPROCESSING_AVAILABLE:
+                    try:
+                        temp_dir = self._get_temp_dir()
+                        base_name = os.path.splitext(os.path.basename(p))[0]
+                        pre_path = os.path.join(temp_dir, f"{base_name}_pre_model.png")
+                        _, pre_path, _steps = preprocess_for_book_cover(p, pre_path)
+                        model_temp_files_to_cleanup.append(pre_path)
+                        current_path = pre_path
+                    except Exception:
+                        current_path = p
+                # Edge crop (simple centered crop)
+                if self.edge_crop_percent > 0.0:
+                    try:
+                        central = self._central_edge_crop(current_path, self.edge_crop_percent)
+                        if central and os.path.exists(central):
+                            model_temp_files_to_cleanup.append(central)
+                            current_path = central
+                    except Exception:
+                        pass
+                # Auto text crop (heuristic)
+                if self.crop_for_ocr:
+                    try:
+                        cropped = self._auto_crop_text_region(current_path, self.crop_margin)
+                        if cropped and os.path.exists(cropped):
+                            model_temp_files_to_cleanup.append(cropped)
+                            current_path = cropped
+                    except Exception:
+                        pass
+            finally:
+                model_input_paths.append(current_path)
+
+        # Encode all images for Ollama using processed inputs
+        print(f"\n📸 Encoding {len(model_input_paths)} images for vision model...")
         images = []
-        for i, img_path in enumerate(image_paths, 1):
-            print(f"   📷 Encoding image {i}: {os.path.basename(img_path)}")
-            encoded = self._encode_image_for_model(img_path)
+        for i, (orig_path, model_path) in enumerate(zip(image_paths, model_input_paths), 1):
+            print(f"   📷 Encoding image {i}: {os.path.basename(orig_path)} → {os.path.basename(model_path)}")
+            idx0 = i - 1
+            max_dim_model = 1600 if idx0 == 0 else 2400
+            jpeg_q = 85 if idx0 == 0 else 90
+            encoded = self._encode_image_for_model(model_path, max_dim=max_dim_model, jpeg_quality=jpeg_q)
             images.append(encoded)
             print(f"      ✓ Encoded ({len(encoded)} characters)")
+        # Cleanup temporary processed inputs
+        try:
+            for tmp in model_temp_files_to_cleanup:
+                if tmp and os.path.exists(tmp):
+                    os.remove(tmp)
+        except Exception:
+            pass
         if capture_trace:
             trace["steps"].append({"step": "encode_images", "info": {"count": len(images)}})
             self._emit_trace(trace)

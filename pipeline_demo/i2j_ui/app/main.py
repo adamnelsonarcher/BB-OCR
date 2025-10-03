@@ -411,7 +411,7 @@ async def job_result(id: str):
             return JSONResponse(status_code=202, content={"status": status})
         return {"id": id, "status": status, "metadata": job.get("metadata"), "files": job.get("files", [])}
 
-def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool, llm_backend: str = "ollama") -> None:
+def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool, llm_backend: str = "ollama", run_ocr: bool = True) -> None:
 	_JOB_SEM.acquire()
 	try:
 		with _JOBS_LOCK:
@@ -428,7 +428,7 @@ def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_e
 		sys.stderr = _JobLogTee(_orig_err, job_id)
 		try:
 			extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr, llm_backend=llm_backend)
-			ocr_indices = _compute_default_ocr_indices(len(image_paths))
+			ocr_indices = _compute_default_ocr_indices(len(image_paths)) if bool(run_ocr) else []
 			metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
 		finally:
 			sys.stdout = _orig_out
@@ -614,6 +614,7 @@ async def process_image(
 	image: UploadFile = File(...),
 	model: str = Form("gemma3:4b"),
 	ocr_engine: str = Form("easyocr"),
+	run_ocr: bool = Form(True),
 	use_preprocessing: bool = Form(True),
 	edge_crop: float = Form(0.0),
 	crop_ocr: bool = Form(True),
@@ -645,7 +646,7 @@ async def process_image(
 		return JSONResponse(status_code=400, content={"error": bad})
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, [saved_path]), kwargs={
-		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama')
+		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama'), 'run_ocr': bool(run_ocr)
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
@@ -660,6 +661,7 @@ async def process_images(
 	images: List[UploadFile] = File(...),
 	model: str = Form("gemma3:4b"),
 	ocr_engine: str = Form("easyocr"),
+	run_ocr: bool = Form(True),
 	use_preprocessing: bool = Form(True),
 	edge_crop: float = Form(0.0),
 	crop_ocr: bool = Form(True),
@@ -695,7 +697,7 @@ async def process_images(
 		return JSONResponse(status_code=400, content={"error": bad})
 	# Start background job and return immediately
 	t = threading.Thread(target=_run_extractor_job, args=(item_id, saved_paths), kwargs={
-		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama')
+		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama'), 'run_ocr': bool(run_ocr)
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
@@ -731,6 +733,7 @@ class ExamplePayload(BaseModel):
 	book_id: str
 	model: Optional[str] = "gemma3:4b"
 	ocr_engine: Optional[str] = "easyocr"
+	run_ocr: Optional[bool] = True
 	use_preprocessing: Optional[bool] = True
 	edge_crop: Optional[float] = 0.0
 	crop_ocr: Optional[bool] = True
@@ -775,7 +778,7 @@ async def process_example(payload: ExamplePayload):
 		raise HTTPException(status_code=400, detail=bad)
 	
 	t = threading.Thread(target=_run_extractor_job, args=(job_id, image_paths), kwargs={
-		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False), 'llm_backend': str(payload.llm_backend or 'ollama')
+		'model': payload.model or 'gemma3:4b', 'ocr_engine': payload.ocr_engine or 'easyocr', 'use_preprocessing': bool(payload.use_preprocessing), 'edge_crop': float(payload.edge_crop or 0.0), 'crop_ocr': bool(payload.crop_ocr or False), 'llm_backend': str(payload.llm_backend or 'ollama'), 'run_ocr': bool(payload.run_ocr if payload.run_ocr is not None else True)
 	}, daemon=True)
 	t.start()
 	with _JOBS_LOCK:
@@ -989,5 +992,3 @@ async def reject(payload: RejectPayload):
 	with open(log_path, "w", encoding="utf-8") as f:
 		f.write(payload.reason or "rejected")
 	return {"status": "rejected", "path": log_path}
-
-

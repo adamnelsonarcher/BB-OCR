@@ -82,6 +82,22 @@ class ImagePreprocessor:
             self.preprocessed_image = np.array(enhanced_img)
         self.steps_applied.append(f"increase_contrast(factor={factor})")
         return self
+
+    def increase_brightness(self, factor=1.2):
+        if self.preprocessed_image is None:
+            raise ValueError("No image loaded")
+        if len(self.preprocessed_image.shape) == 3:
+            pil_img = Image.fromarray(cv2.cvtColor(self.preprocessed_image, cv2.COLOR_BGR2RGB))
+        else:
+            pil_img = Image.fromarray(self.preprocessed_image)
+        enhancer = ImageEnhance.Brightness(pil_img)
+        bright_img = enhancer.enhance(factor)
+        if len(self.preprocessed_image.shape) == 3:
+            self.preprocessed_image = cv2.cvtColor(np.array(bright_img), cv2.COLOR_RGB2BGR)
+        else:
+            self.preprocessed_image = np.array(bright_img)
+        self.steps_applied.append(f"increase_brightness(factor={factor})")
+        return self
     
     def sharpen(self, amount=0.3):
         if self.preprocessed_image is None:
@@ -134,9 +150,10 @@ def preprocess_for_book_cover(image_path, output_path=None):
     preprocessor.to_grayscale()
     preprocessor.resize(scale_factor=1.5)
     preprocessor.denoise(strength=5)
-    preprocessor.increase_contrast(1.3)
-    preprocessor.clahe(clip_limit=2.0)
-    preprocessor.sharpen(amount=0.2)
+    preprocessor.increase_brightness(1.2)
+    preprocessor.increase_contrast(1.8)
+    preprocessor.clahe(clip_limit=2.5)
+    preprocessor.sharpen(amount=0.25)
     if output_path:
         preprocessor.save_image(output_path)
     return (preprocessor.get_image(), output_path, preprocessor.get_steps_applied())
