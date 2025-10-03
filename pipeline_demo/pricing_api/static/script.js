@@ -25,7 +25,7 @@ async function init() {
       const id = `prov-${p}`;
       const label = document.createElement('label');
       const cb = document.createElement('input');
-      cb.type = 'checkbox'; cb.value = p; cb.id = id; cb.checked = true;
+      cb.type = 'checkbox'; cb.value = p; cb.id = id; cb.checked = (p === 'abebooks');
       const span = document.createElement('span');
       span.textContent = p;
       label.appendChild(cb); label.appendChild(span);
