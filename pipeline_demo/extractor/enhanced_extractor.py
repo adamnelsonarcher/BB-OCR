@@ -22,6 +22,13 @@ import cv2
 import numpy as np
 import tempfile
 
+# Load .env if present so env-based flags work when launching via UI/server
+try:
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
+
 # Add the parent directories to the path to import from other modules
 parent_dir = os.path.dirname(os.path.abspath(__file__))
 ocr_testing_dir = os.path.join(os.path.dirname(parent_dir), "ocr_testing")
@@ -91,7 +98,7 @@ class EnhancedBookMetadataExtractor:
     _easyocr_reader_cache: Dict[str, easyocr.Reader] = {}
 
     def __init__(self, model: str = "gemma3:4b", prompt_file: str = None, ocr_engine: str = "easyocr", use_preprocessing: bool = True,
-                 crop_for_ocr: bool = False, crop_margin: int = 16, warm_model: bool = True,
+                 crop_for_ocr: bool = False, crop_margin: int = 128, warm_model: bool = True,
                  edge_crop_percent: float = 0.0, ollama_timeout_seconds: float = 300.0,
                  max_ocr_chars_per_image: int = 330, llm_backend: str = "ollama"):
         """Initialize the extractor with the specified model, OCR engine, and preprocessing options.
@@ -272,14 +279,28 @@ class EnhancedBookMetadataExtractor:
         for c in contours:
             x, y, cw, ch = cv2.boundingRect(c)
             area = float(cw * ch)
-            if area < 0.004 * img_area:
+            if area < 0.001 * img_area:
+                continue
+            if area > 0.1 * img_area:
                 continue
             aspect = cw / float(ch + 1e-6)
             if aspect < 0.12 or aspect > 25.0:
                 continue
             boxes.append((x, y, cw, ch))
         if not boxes:
-            return None
+            # Fallback: increase sensitivity to very small text on otherwise blank pages
+            contours2, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for c in contours2:
+                x, y, cw, ch = cv2.boundingRect(c)
+                area = float(cw * ch)
+                """if area < 0.0003 * img_area:
+                    continue
+                aspect = cw / float(ch + 1e-6)
+                if aspect < 0.08 or aspect > 60.0:
+                    continue
+                boxes.append((x, y, cw, ch))"""
+            if not boxes:
+                return None
         # Union of boxes
         x0 = min(b[0] for b in boxes)
         y0 = min(b[1] for b in boxes)
@@ -310,7 +331,10 @@ class EnhancedBookMetadataExtractor:
                 if box_area <= max_area:
                     x0, y0, x1, y1 = xx0, yy0, xx1, yy1
                     break
-        # Apply margin and bounds
+        # Save pre-margin union box for debug overlay
+        pre_margin_x0, pre_margin_y0, pre_margin_x1, pre_margin_y1 = x0, y0, x1, y1
+
+        # Apply margin and bounds (final crop region)
         x0 = max(0, x0 - margin)
         y0 = max(0, y0 - margin)
         x1 = min(w, x1 + margin)
@@ -319,21 +343,28 @@ class EnhancedBookMetadataExtractor:
             return None
         
         
-        """# Debug: draw boxes and union rect, return annotated image without cropping when enabled
-        annotated = img.copy()
-        # draw individual boxes (green)
-        try:
-            for (bx, by, bw, bh) in boxes:
-                cv2.rectangle(annotated, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 255, 0), 2)
-            # draw union box (red)
-            cv2.rectangle(annotated, (int(x0), int(y0)), (int(x1), int(y1)), (0, 0, 255), 3)
-        except Exception:
-            pass
-        temp_dir = self._get_temp_dir()
-        base = os.path.splitext(os.path.basename(image_path))[0]
-        out_path = os.path.join(temp_dir, f"{base}_autocrop_debug.png")
-        cv2.imwrite(out_path, annotated)
-        return out_path"""
+        # Debug overlay: draw boxes and union rect to a sidecar image (do not early-return)
+        if getattr(self, "debug_autocrop", False):
+            annotated = img.copy()
+            # draw individual boxes (green)
+            try:
+                for (bx, by, bw, bh) in boxes:
+                    cv2.rectangle(annotated, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 255, 0), 2)
+                # draw union box pre-margin (red)
+                cv2.rectangle(annotated, (int(pre_margin_x0), int(pre_margin_y0)), (int(pre_margin_x1), int(pre_margin_y1)), (0, 0, 255), 2)
+                # draw final crop box post-margin (black)
+                cv2.rectangle(annotated, (int(x0), int(y0)), (int(x1), int(y1)), (0, 0, 0), 2)
+            except Exception:
+                pass
+            temp_dir = self._get_temp_dir()
+            base = os.path.splitext(os.path.basename(image_path))[0]
+            debug_path = os.path.join(temp_dir, f"{base}_autocrop_debug.png")
+            try:
+                cv2.imwrite(debug_path, annotated)
+            except Exception:
+                pass
+            # In debug mode, return the annotated full image instead of a cropped region
+            return debug_path
     
     
         cropped = img[y0:y1, x0:x1]
@@ -683,6 +714,46 @@ class EnhancedBookMetadataExtractor:
         print(f"\n📊 OCR PROCESSING SUMMARY:")
         print(f"   • OCR texts collected: {len(ocr_texts)}")
         
+        # If autocrop debug is enabled, do not send any model requests; return minimal stub
+        if getattr(self, "debug_autocrop", False):
+            print("\n🧪 Debug autocrop is ON: skipping model request and returning minimal stub")
+            if capture_trace:
+                try:
+                    trace_copy = dict(trace)
+                except Exception:
+                    trace_copy = trace
+            else:
+                trace_copy = None
+            stub = {
+                "title": None,
+                "subtitle": None,
+                "authors": [],
+                "publisher": None,
+                "publication_date": None,
+                "isbn_10": None,
+                "isbn_13": None,
+                "asin": None,
+                "edition": None,
+                "binding_type": None,
+                "language": None,
+                "page_count": None,
+                "categories": [],
+                "description": None,
+                "condition_keywords": [],
+                "price": {"currency": None, "amount": None},
+                "_processing_info": {
+                    "ocr_engine": self.ocr_engine,
+                    "preprocessing_used": self.use_preprocessing,
+                    "ocr_images_processed": len(ocr_texts),
+                    "total_images": len(image_paths),
+                    "debug_autocrop": True,
+                    "model_skipped": True,
+                },
+            }
+            if capture_trace and isinstance(trace_copy, dict):
+                stub["_trace"] = trace_copy
+            return stub
+
         # Create enhanced prompt with OCR context
         print(f"\n🤖 OLLAMA PROCESSING PHASE")
         print(f"=" * 50)
