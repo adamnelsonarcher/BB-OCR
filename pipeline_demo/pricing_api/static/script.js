@@ -164,7 +164,7 @@ btnRun.addEventListener('click', async () => {
       const m = String(v ?? '').match(/(18|19|20)\d{2}/);
       return m ? m[0] : null;
     };
-    const q_year = extractYear(data.query?.publication_date ?? null);
+    const q_year = extractYear(data.query?.year ?? data.query?.publication_date ?? null);
     console.log('[pricing-ui] Query year:', q_year);
     console.log('[pricing-ui] Offers received:', offers.length, offers.map(o => ({ provider: o.provider, amount: o.amount, currency: o.currency, pub: o.publication_date, title: o.title })));
     let candidates = offers;
@@ -208,7 +208,7 @@ btnRun.addEventListener('click', async () => {
     let merged;
     try { merged = JSON.parse(jsonEl.value || '{}'); } catch { merged = { ...src }; }
     if (merged && typeof merged !== 'object') merged = { ...src };
-    const ensureKeys = ['title','subtitle','authors','publisher','publication_date','isbn_13','isbn_10','asin','edition','binding_type','language','page_count','categories','description','condition_keywords','price'];
+    const ensureKeys = ['title','subtitle','authors','publisher','year','publication_date','isbn_13','isbn_10','asin','edition','binding_type','language','page_count','categories','description','condition_keywords','price'];
     for (const k of ensureKeys) if (!(k in merged)) merged[k] = null;
     if (merged.price === null || typeof merged.price !== 'object') merged.price = { currency: null, amount: null };
     if (!Array.isArray(merged.authors) && merged.authors !== null) merged.authors = [String(merged.authors)];
@@ -222,6 +222,9 @@ btnRun.addEventListener('click', async () => {
       merged.subtitle = pick(merged.subtitle, best.subtitle ?? null);
       merged.authors = pick(merged.authors, Array.isArray(best.authors) ? best.authors : null);
       merged.publisher = pick(merged.publisher, best.publisher ?? null);
+      // Keep year primary; keep publication_date as historical if present
+      const byear = extractYear(best.publication_date);
+      merged.year = pick(merged.year, byear ?? null);
       merged.publication_date = pick(merged.publication_date, best.publication_date ?? null);
       merged.isbn_13 = pick(merged.isbn_13, best.isbn_13 ?? null);
       merged.isbn_10 = pick(merged.isbn_10, best.isbn_10 ?? null);
@@ -232,12 +235,10 @@ btnRun.addEventListener('click', async () => {
       merged.info_url = best.url ?? null;
       merged.source_provider = best.provider ?? null;
 
-      // Populate price from best offer in all cases (overwrite any existing)
+      // Populate price at pricing step only
       const bAmt = best.amount;
       const parsedAmt = (typeof bAmt === 'number') ? bAmt : (bAmt !== null && bAmt !== undefined && !Number.isNaN(Number(bAmt)) ? Number(bAmt) : null);
-      console.log('[pricing-ui] Price merge - raw amount:', bAmt, 'type:', typeof bAmt, 'parsed:', parsedAmt, 'currency:', best.currency);
       merged.price = { currency: (best.currency ?? null), amount: parsedAmt };
-      console.log('[pricing-ui] Merged price now:', merged.price);
     }
     mergeTable.innerHTML = toTable(merged);
     lastBestOffer = best || null;

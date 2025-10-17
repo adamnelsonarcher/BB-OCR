@@ -64,7 +64,7 @@ METADATA_SCHEMA = {
             "items": {"type": "string"}
         },
         "publisher": {"type": ["string", "null"]},
-        "publication_date": {"type": ["string", "null"]},
+        "year": {"type": ["string", "null"]},
         "isbn_10": {"type": ["string", "null"]},
         "isbn_13": {"type": ["string", "null"]},
         "asin": {"type": ["string", "null"]},
@@ -82,7 +82,7 @@ METADATA_SCHEMA = {
             "items": {"type": "string"}
         },
         "price": {
-            "type": "object",
+            "type": ["object", "null"],
             "properties": {
                 "currency": {"type": ["string", "null"]},
                 "amount": {"type": ["number", "null"]}
@@ -931,7 +931,7 @@ class EnhancedBookMetadataExtractor:
             print(f"   • Title: {metadata.get('title', 'N/A')}")
             print(f"   • Authors: {', '.join(metadata.get('authors', [])) or 'N/A'}")
             print(f"   • Publisher: {metadata.get('publisher', 'N/A')}")
-            print(f"   • Publication Date: {metadata.get('publication_date', 'N/A')}")
+            print(f"   • Year: {metadata.get('year', 'N/A')}")
             print(f"   • ISBN-13: {metadata.get('isbn_13', 'N/A')}")
             print(f"   • ISBN-10: {metadata.get('isbn_10', 'N/A')}")
             
@@ -948,7 +948,7 @@ class EnhancedBookMetadataExtractor:
                 "subtitle": None,
                 "authors": [],
                 "publisher": None,
-                "publication_date": None,
+                "year": None,
                 "isbn_10": None,
                 "isbn_13": None,
                 "asin": None,
@@ -977,7 +977,7 @@ class EnhancedBookMetadataExtractor:
             print(f"   • Title: {fallback_metadata.get('title', 'N/A')}")
             print(f"   • Authors: {', '.join(fallback_metadata.get('authors', [])) or 'N/A'}")
             print(f"   • Publisher: {fallback_metadata.get('publisher', 'N/A')}")
-            print(f"   • Publication Date: {fallback_metadata.get('publication_date', 'N/A')}")
+            print(f"   • Year: {fallback_metadata.get('year', 'N/A')}")
             print(f"   ⚠️  Using minimal fallback due to Ollama parsing failure")
             
             if capture_trace:

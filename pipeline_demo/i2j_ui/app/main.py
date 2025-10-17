@@ -1028,7 +1028,7 @@ async def accept(payload: AcceptPayload):
 	with open(output_path, "w", encoding="utf-8") as f:
 		json.dump(payload.metadata, f, indent=2, ensure_ascii=False)
 	try:
-		sheets_ok = _gs_append_row(
+		sheets_res = _gs_append_row(
 			stage="scanner",
 			action="approved",
 			id=payload.id,
@@ -1038,11 +1038,11 @@ async def accept(payload: AcceptPayload):
 			offer=None,
 			error=None,
 		)
-	except Exception:
-		sheets_ok = False
+	except Exception as e:
+		sheets_res = {"ok": False, "error": str(e)}
 	# Provide an ephemeral transfer key for pricing iframe to fetch
 	transfer_key = _transfer_put(payload.id, payload.metadata)
-	return {"status": "saved", "path": output_path, "transfer_key": transfer_key, "sheets_ok": bool(sheets_ok)}
+	return {"status": "saved", "path": output_path, "transfer_key": transfer_key, "sheets": sheets_res}
 
 
 class RejectPayload(BaseModel):
@@ -1056,7 +1056,7 @@ async def reject(payload: RejectPayload):
 	with open(log_path, "w", encoding="utf-8") as f:
 		f.write(payload.reason or "rejected")
 	try:
-		sheets_ok = _gs_append_row(
+		sheets_res = _gs_append_row(
 			stage="scanner",
 			action="rejected",
 			id=payload.id,
@@ -1066,9 +1066,9 @@ async def reject(payload: RejectPayload):
 			offer=None,
 			error=None,
 		)
-	except Exception:
-		sheets_ok = False
-	return {"status": "rejected", "path": log_path, "sheets_ok": bool(sheets_ok)}
+	except Exception as e:
+		sheets_res = {"ok": False, "error": str(e)}
+	return {"status": "rejected", "path": log_path, "sheets": sheets_res}
 
 
 @app.get("/api/transfer_get")
@@ -1095,7 +1095,7 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=str(e))
 		try:
-			sheets_ok = _gs_append_row(
+			sheets_res = _gs_append_row(
 				stage="pricing",
 				action="approved",
 				id=item_id,
@@ -1105,9 +1105,9 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 				offer=payload.best_offer or None,
 				error=None,
 			)
-		except Exception:
-			sheets_ok = False
-		return {"status": "approved", "path": out_path, "sheets_ok": bool(sheets_ok)}
+		except Exception as e:
+			sheets_res = {"ok": False, "error": str(e)}
+		return {"status": "approved", "path": out_path, "sheets": sheets_res}
 	else:
 		rej_path = os.path.join(PRICING_REJECTED_DIR, f"{item_id}.txt")
 		try:
@@ -1116,7 +1116,7 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=str(e))
 		try:
-			sheets_ok = _gs_append_row(
+			sheets_res = _gs_append_row(
 				stage="pricing",
 				action="rejected",
 				id=item_id,
@@ -1126,9 +1126,9 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 				offer=payload.best_offer or None,
 				error=None,
 			)
-		except Exception:
-			sheets_ok = False
-		return {"status": "rejected", "path": rej_path, "sheets_ok": bool(sheets_ok)}
+		except Exception as e:
+			sheets_res = {"ok": False, "error": str(e)}
+		return {"status": "rejected", "path": rej_path, "sheets": sheets_res}
 
 
 @app.get("/api/google_sheets/test")

@@ -1,9 +1,11 @@
 import os
+import json
 import datetime
 from typing import Any, Dict, Optional
 
 _CLIENT = None
 _SHEET = None
+_LAST_ERROR: Optional[str] = None
 
 # Target 8-column table header
 _TABLE8_HEADER = [
@@ -20,15 +22,18 @@ _TABLE8_HEADER = [
 
 def _load_client():
     global _CLIENT
+    global _LAST_ERROR
     if _CLIENT is not None:
         return _CLIENT
-    creds_path = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
-    if not creds_path:
+    creds_env = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_JSON")
+    if not creds_env:
+        _LAST_ERROR = "missing GOOGLE_SHEETS_CREDENTIALS_JSON"
         return None
     try:
         import gspread  # type: ignore
         from google.oauth2.service_account import Credentials  # type: ignore
-    except Exception:
+    except Exception as e:
+        _LAST_ERROR = f"deps_unavailable: {str(e)}"
         return None
     try:
         scopes = [
@@ -36,26 +41,36 @@ def _load_client():
             "https://www.googleapis.com/auth/drive.file",
             "https://www.googleapis.com/auth/drive",
         ]
-        creds = Credentials.from_service_account_file(creds_path, scopes=scopes)
+        # Allow either a file path or JSON string
+        if creds_env.strip().startswith("{"):
+            info = json.loads(creds_env)
+            creds = Credentials.from_service_account_info(info, scopes=scopes)
+        else:
+            creds = Credentials.from_service_account_file(creds_env, scopes=scopes)
         _CLIENT = gspread.authorize(creds)
         return _CLIENT
-    except Exception:
+    except Exception as e:
+        _LAST_ERROR = f"auth_error: {str(e)}"
         return None
 
 
 def _load_sheet():
     global _SHEET
+    global _LAST_ERROR
     if _SHEET is not None:
         return _SHEET
     client = _load_client()
     if client is None:
+        if not _LAST_ERROR:
+            _LAST_ERROR = "client_init_failed"
         return None
     spreadsheet_id = os.environ.get("GOOGLE_SHEETS_SPREADSHEET_ID")
     if not spreadsheet_id:
+        _LAST_ERROR = "missing GOOGLE_SHEETS_SPREADSHEET_ID"
         return None
     try:
         sh = client.open_by_key(spreadsheet_id)
-        worksheet_name = os.environ.get("GOOGLE_SHEETS_WORKSHEET", "ReviewLog")
+        worksheet_name = os.environ.get("GOOGLE_SHEETS_WORKSHEET", "Sheet1")
         try:
             ws = sh.worksheet(worksheet_name)
         except Exception:
@@ -84,7 +99,8 @@ def _load_sheet():
                 pass
         _SHEET = ws
         return _SHEET
-    except Exception:
+    except Exception as e:
+        _LAST_ERROR = f"sheet_open_failed: {str(e)}"
         return None
 
 
@@ -102,10 +118,10 @@ def append_row(
     metadata: Optional[Dict[str, Any]] = None,
     offer: Optional[Dict[str, Any]] = None,
     error: Optional[str] = None,
-) -> bool:
+) -> dict:
     ws = _load_sheet()
     if ws is None:
-        return False
+        return {"ok": False, "error": "sheet_unavailable"}
     md = metadata or {}
     ts = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc).isoformat()
     title = md.get("title") if isinstance(md, dict) else None
@@ -126,7 +142,7 @@ def append_row(
     # Decide format by inspecting the header row
     try:
         header_values = ws.row_values(1) if hasattr(ws, 'row_values') else []
-    except Exception:
+    except Exception as e:
         header_values = []
 
     def _extract_year(v: Optional[str]) -> str:
@@ -158,9 +174,9 @@ def append_row(
                 decision,
                 comment or "",
             ])
-            return True
-        except Exception:
-            return False
+            return {"ok": True, "mode": "8col"}
+        except Exception as e:
+            return {"ok": False, "error": f"append_8col_failed: {str(e)}"}
 
     # Default: 16-column audit sheet
     try:
@@ -182,18 +198,18 @@ def append_row(
             comment or "",
             error or "",
         ])
-        return True
-    except Exception:
-        return False
+        return {"ok": True, "mode": "audit"}
+    except Exception as e:
+        return {"ok": False, "error": f"append_audit_failed: {str(e)}"}
 
 
 def connectivity() -> Dict[str, Any]:
     client = _load_client()
     if client is None:
-        return {"ok": False, "error": "client_unavailable"}
+        return {"ok": False, "error": "client_unavailable", "detail": _LAST_ERROR}
     ws = _load_sheet()
     if ws is None:
-        return {"ok": False, "error": "sheet_unavailable"}
+        return {"ok": False, "error": "sheet_unavailable", "detail": _LAST_ERROR}
     try:
         title = ws.title
         return {"ok": True, "worksheet": title}
