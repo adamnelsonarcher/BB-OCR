@@ -657,15 +657,18 @@ btnAccept.addEventListener('click', async () => {
     try {
       switchTab('pricing');
       const iframe = document.querySelector('#panel-pricing iframe');
-      if (iframe) {
+      const key = data && data.transfer_key;
+      if (iframe && key) {
+        // Navigate iframe with transfer key so it can fetch
+        const url = new URL(iframe.src, window.location.origin);
+        url.searchParams.set('key', key);
+        iframe.src = url.toString();
+      } else if (iframe) {
+        // Fallback to postMessage if key missing
         const send = () => {
           try { iframe.contentWindow && iframe.contentWindow.postMessage({ type: 'scannerAccepted', id: lastId, metadata }, '*'); } catch {}
         };
-        if (iframe.contentWindow && iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
-          send();
-        } else {
-          iframe.addEventListener('load', send, { once: true });
-        }
+        if (iframe.contentWindow && iframe.contentDocument && iframe.contentDocument.readyState === 'complete') send(); else iframe.addEventListener('load', send, { once: true });
       }
     } catch {}
   } catch (e) {

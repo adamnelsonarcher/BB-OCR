@@ -128,22 +128,30 @@
     "ollama_raw": "```json\n{\n\t\"title\": \"ELSIE AT VIAMEDE\",\n\t\"subtitle\": null,\n\t\"authors\": [\n\t\t\"Martha Finley\"\n\t],\n\t\"publisher\": \"A. L. Burt Company\",\n\t\"publication_date\": null,\n\t\"isbn_10\": null,\n\t\"isbn_13\": null,\n\t\"asin\": null,\n\t\"edition\": \"Complete Authorized Edition\",\n\t\"binding_type\": \"Hardcover\",\n\t\"language\": null,\n\t\"page_count\": null,\n\t\"categories\": [],\n\t\"description\": null,\n\t\"condition_keywords\": [\n\t\t\"Vintage\"\n\t],\n\t\"price\": {\n\t\t\"currency\": \"USD\",\n\t\t\"amount\": 1.10\n\t}\n}\n```"
   },
   "asin": "",
-  "authors": "Martha Finley",
+  "authors": [
+    "Martha Finley"
+  ],
   "binding_type": "Hardcover",
-  "categories": "",
-  "condition_keywords": "Vintage",
-  "description": "",
+  "categories": [
+    ""
+  ],
+  "condition_keywords": [
+    "Vintage"
+  ],
+  "description": null,
   "edition": "Complete Authorized Edition",
-  "isbn_10": "",
-  "isbn_13": "",
-  "language": "",
-  "page_count": "",
+  "isbn_10": null,
+  "isbn_13": null,
+  "language": null,
+  "page_count": null,
   "price": {
     "currency": "USD",
-    "amount": 1.1
+    "amount": 4.15
   },
-  "publication_date": "",
+  "publication_date": "1111",
   "publisher": "A. L. Burt Company",
-  "subtitle": "",
-  "title": "ELSIE AT VIAMEDE"
+  "subtitle": null,
+  "title": "ELSIE AT VIAMEDE",
+  "info_url": "https://www.abebooks.com/Elsie-Viamede-Martha-Finley-Farquharson-George/31059860519/bd",
+  "source_provider": "abebooks"
 }

@@ -97,6 +97,32 @@ _STATUS_SEQ: Dict[str, int] = {}
 # One-time Ollama warm-check state
 _OLLAMA_WARMED = False
 
+# Ephemeral transfer cache for Accept → Pricing handoff
+_TRANSFER_LOCK = threading.Lock()
+_TRANSFER_TTL_SECONDS = 300
+_TRANSFER_STORE: Dict[str, Dict[str, Any]] = {}
+
+def _transfer_put(item_id: str, metadata: Dict[str, Any]) -> str:
+    key = f"t_{int(time.time()*1000)}_{abs(hash(item_id))%100000}"
+    with _TRANSFER_LOCK:
+        _TRANSFER_STORE[key] = {"ts": time.time(), "id": item_id, "metadata": metadata}
+        # Cleanup
+        cutoff = time.time() - _TRANSFER_TTL_SECONDS
+        for k in list(_TRANSFER_STORE.keys()):
+            if _TRANSFER_STORE[k].get("ts", 0) < cutoff:
+                _TRANSFER_STORE.pop(k, None)
+    return key
+
+def _transfer_get(key: str) -> Optional[Dict[str, Any]]:
+    with _TRANSFER_LOCK:
+        item = _TRANSFER_STORE.get(key)
+        if not item:
+            return None
+        if (time.time() - item.get("ts", 0)) > _TRANSFER_TTL_SECONDS:
+            _TRANSFER_STORE.pop(key, None)
+            return None
+        return {"id": item.get("id"), "metadata": item.get("metadata")}
+
 def _make_trace_sink(job_id: str) -> Callable[[dict], None]:
     # Track which heavy image fields we've already sent to clients per image index
     heavy_fields = ("original_b64", "preprocessed_b64", "edge_cropped_b64", "auto_cropped_b64")
@@ -1002,7 +1028,7 @@ async def accept(payload: AcceptPayload):
 	with open(output_path, "w", encoding="utf-8") as f:
 		json.dump(payload.metadata, f, indent=2, ensure_ascii=False)
 	try:
-		_gs_append_row(
+		sheets_ok = _gs_append_row(
 			stage="scanner",
 			action="approved",
 			id=payload.id,
@@ -1013,8 +1039,10 @@ async def accept(payload: AcceptPayload):
 			error=None,
 		)
 	except Exception:
-		pass
-	return {"status": "saved", "path": output_path}
+		sheets_ok = False
+	# Provide an ephemeral transfer key for pricing iframe to fetch
+	transfer_key = _transfer_put(payload.id, payload.metadata)
+	return {"status": "saved", "path": output_path, "transfer_key": transfer_key, "sheets_ok": bool(sheets_ok)}
 
 
 class RejectPayload(BaseModel):
@@ -1028,7 +1056,7 @@ async def reject(payload: RejectPayload):
 	with open(log_path, "w", encoding="utf-8") as f:
 		f.write(payload.reason or "rejected")
 	try:
-		_gs_append_row(
+		sheets_ok = _gs_append_row(
 			stage="scanner",
 			action="rejected",
 			id=payload.id,
@@ -1039,8 +1067,16 @@ async def reject(payload: RejectPayload):
 			error=None,
 		)
 	except Exception:
-		pass
-	return {"status": "rejected", "path": log_path}
+		sheets_ok = False
+	return {"status": "rejected", "path": log_path, "sheets_ok": bool(sheets_ok)}
+
+
+@app.get("/api/transfer_get")
+async def transfer_get(key: str):
+	item = _transfer_get(key)
+	if not item:
+		raise HTTPException(status_code=404, detail="transfer not found or expired")
+	return item
 
 
 @app.post("/api/pricing/finalize")
@@ -1059,7 +1095,7 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=str(e))
 		try:
-			_gs_append_row(
+			sheets_ok = _gs_append_row(
 				stage="pricing",
 				action="approved",
 				id=item_id,
@@ -1070,8 +1106,8 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 				error=None,
 			)
 		except Exception:
-			pass
-		return {"status": "approved", "path": out_path}
+			sheets_ok = False
+		return {"status": "approved", "path": out_path, "sheets_ok": bool(sheets_ok)}
 	else:
 		rej_path = os.path.join(PRICING_REJECTED_DIR, f"{item_id}.txt")
 		try:
@@ -1080,7 +1116,7 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 		except Exception as e:
 			raise HTTPException(status_code=500, detail=str(e))
 		try:
-			_gs_append_row(
+			sheets_ok = _gs_append_row(
 				stage="pricing",
 				action="rejected",
 				id=item_id,
@@ -1091,8 +1127,8 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 				error=None,
 			)
 		except Exception:
-			pass
-		return {"status": "rejected", "path": rej_path}
+			sheets_ok = False
+		return {"status": "rejected", "path": rej_path, "sheets_ok": bool(sheets_ok)}
 
 
 @app.get("/api/google_sheets/test")

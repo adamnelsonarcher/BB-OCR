@@ -260,6 +260,23 @@ window.addEventListener('message', (ev) => {
   } catch {}
 });
 
+// If embedded with ?key=..., fetch handoff payload
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const key = params.get('key');
+    if (!key) return;
+    const resp = await fetch(`/api/transfer_get?key=${encodeURIComponent(key)}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data && data.metadata) {
+      currentReviewId = data.id || null;
+      jsonEl.value = JSON.stringify(data.metadata, null, 2);
+      btnRun.click();
+    }
+  } catch {}
+});
+
 async function finalize(decision) {
   const comment = (reviewCommentEl && reviewCommentEl.value) || '';
   const payload = { id: currentReviewId, decision, comment };
