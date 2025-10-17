@@ -15,6 +15,17 @@ import tempfile
 import threading
 from typing import Callable
 
+# Optional Google Sheets logging helper (no-op if not configured)
+try:
+    from .google_sheets import append_row as _gs_append_row, connectivity as _gs_connectivity, is_configured as _gs_is_configured
+except Exception:
+    def _gs_append_row(**kwargs):
+        return False
+    def _gs_connectivity():
+        return {"ok": False, "error": "unavailable"}
+    def _gs_is_configured():
+        return False
+
 # Resolve path to the OCR/LLM pipeline (pipeline_demo/extractor)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
@@ -49,10 +60,13 @@ DATA_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "data"
 UPLOADS_DIR = os.path.join(DATA_DIR, "uploads")
 ACCEPTED_DIR = os.path.join(DATA_DIR, "accepted")
 REJECTED_DIR = os.path.join(DATA_DIR, "rejected")
+# Pricing review artifacts
+PRICED_DIR = os.path.join(ACCEPTED_DIR, "priced")
+PRICING_REJECTED_DIR = os.path.join(REJECTED_DIR, "pricing")
 STATIC_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "static")
 PRICING_STATIC_DIR = os.path.join(PROJECT_ROOT, "pricing_api", "static")
 
-for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR]:
+for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR, PRICED_DIR, PRICING_REJECTED_DIR]:
 	os.makedirs(d, exist_ok=True)
 
 app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
@@ -475,6 +489,15 @@ class AcceptPayload(BaseModel):
 	id: str
 	metadata: Dict[str, Any]
 	notes: Optional[str] = None
+
+
+class PricingFinalizePayload(BaseModel):
+	id: Optional[str] = None
+	source_path: Optional[str] = None
+	decision: str  # 'approved' | 'rejected'
+	comment: Optional[str] = None
+	merged: Optional[Dict[str, Any]] = None
+	best_offer: Optional[Dict[str, Any]] = None
 
 
 @app.get("/")
@@ -978,6 +1001,19 @@ async def accept(payload: AcceptPayload):
 	output_path = os.path.join(ACCEPTED_DIR, f"{payload.id}.json")
 	with open(output_path, "w", encoding="utf-8") as f:
 		json.dump(payload.metadata, f, indent=2, ensure_ascii=False)
+	try:
+		_gs_append_row(
+			stage="scanner",
+			action="approved",
+			id=payload.id,
+			source_path=output_path,
+			comment=payload.notes,
+			metadata=payload.metadata,
+			offer=None,
+			error=None,
+		)
+	except Exception:
+		pass
 	return {"status": "saved", "path": output_path}
 
 
@@ -991,4 +1027,78 @@ async def reject(payload: RejectPayload):
 	log_path = os.path.join(REJECTED_DIR, f"{payload.id}.txt")
 	with open(log_path, "w", encoding="utf-8") as f:
 		f.write(payload.reason or "rejected")
+	try:
+		_gs_append_row(
+			stage="scanner",
+			action="rejected",
+			id=payload.id,
+			source_path=log_path,
+			comment=payload.reason,
+			metadata=None,
+			offer=None,
+			error=None,
+		)
+	except Exception:
+		pass
 	return {"status": "rejected", "path": log_path}
+
+
+@app.post("/api/pricing/finalize")
+async def pricing_finalize(payload: PricingFinalizePayload):
+	decision = (payload.decision or "").strip().lower()
+	if decision not in ("approved", "rejected"):
+		raise HTTPException(status_code=400, detail="decision must be 'approved' or 'rejected'")
+	ts = int(time.time() * 1000)
+	item_id = payload.id or f"priced_{ts}"
+	if decision == "approved":
+		merged = payload.merged or {}
+		out_path = os.path.join(PRICED_DIR, f"{item_id}.json")
+		try:
+			with open(out_path, "w", encoding="utf-8") as f:
+				json.dump(merged, f, indent=2, ensure_ascii=False)
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=str(e))
+		try:
+			_gs_append_row(
+				stage="pricing",
+				action="approved",
+				id=item_id,
+				source_path=out_path,
+				comment=payload.comment,
+				metadata=merged,
+				offer=payload.best_offer or None,
+				error=None,
+			)
+		except Exception:
+			pass
+		return {"status": "approved", "path": out_path}
+	else:
+		rej_path = os.path.join(PRICING_REJECTED_DIR, f"{item_id}.txt")
+		try:
+			with open(rej_path, "w", encoding="utf-8") as f:
+				f.write(payload.comment or "rejected")
+		except Exception as e:
+			raise HTTPException(status_code=500, detail=str(e))
+		try:
+			_gs_append_row(
+				stage="pricing",
+				action="rejected",
+				id=item_id,
+				source_path=rej_path,
+				comment=payload.comment,
+				metadata=None,
+				offer=payload.best_offer or None,
+				error=None,
+			)
+		except Exception:
+			pass
+		return {"status": "rejected", "path": rej_path}
+
+
+@app.get("/api/google_sheets/test")
+async def google_sheets_test():
+	try:
+		info = _gs_connectivity()
+		return info
+	except Exception as e:
+		return JSONResponse(status_code=500, content={"ok": False, "error": str(e)})
