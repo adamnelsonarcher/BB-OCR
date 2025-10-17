@@ -274,17 +274,16 @@ class EnhancedBookMetadataExtractor:
         if not contours:
             return None
         img_area = float(h * w)
-        # Collect plausible text boxes
+        # Collect boxes using only area-based filtering (no aspect/edge heuristics)
+        min_area_frac = 0.0001  # ignore specks
+        max_area_frac = 0.10    # ignore huge blobs
         boxes: List[Tuple[int,int,int,int]] = []
         for c in contours:
             x, y, cw, ch = cv2.boundingRect(c)
             area = float(cw * ch)
-            if area < 0.001 * img_area:
+            if area < (min_area_frac * img_area):
                 continue
-            if area > 0.1 * img_area:
-                continue
-            aspect = cw / float(ch + 1e-6)
-            if aspect < 0.12 or aspect > 25.0:
+            if area > (max_area_frac * img_area):
                 continue
             boxes.append((x, y, cw, ch))
         if not boxes:
@@ -317,20 +316,8 @@ class EnhancedBookMetadataExtractor:
             x1 = min(w, x1 + pad)
             y1 = min(h, y1 + pad)
         elif area > max_area:
-            # tighten by selecting top contours near vertical center
-            cy = h / 2.0
-            boxes_sorted = sorted(boxes, key=lambda b: (abs((b[1]+b[3]/2.0) - cy), -b[2]*b[3]))
-            acc = []
-            acc_area = 0.0
-            for b in boxes_sorted:
-                acc.append(b)
-                acc_area = float(sum(bb[2]*bb[3] for bb in acc))
-                xx0 = min(bb[0] for bb in acc); yy0 = min(bb[1] for bb in acc)
-                xx1 = max(bb[0]+bb[2] for bb in acc); yy1 = max(bb[1]+bb[3] for bb in acc)
-                box_area = float((xx1-xx0)*(yy1-yy0))
-                if box_area <= max_area:
-                    x0, y0, x1, y1 = xx0, yy0, xx1, yy1
-                    break
+            # Keep union as-is; do not drop boxes—red box must include all green boxes
+            pass
         # Save pre-margin union box for debug overlay
         pre_margin_x0, pre_margin_y0, pre_margin_x1, pre_margin_y1 = x0, y0, x1, y1
 
@@ -351,9 +338,9 @@ class EnhancedBookMetadataExtractor:
                 for (bx, by, bw, bh) in boxes:
                     cv2.rectangle(annotated, (int(bx), int(by)), (int(bx + bw), int(by + bh)), (0, 255, 0), 2)
                 # draw union box pre-margin (red)
-                cv2.rectangle(annotated, (int(pre_margin_x0), int(pre_margin_y0)), (int(pre_margin_x1), int(pre_margin_y1)), (0, 0, 255), 2)
-                # draw final crop box post-margin (black)
-                cv2.rectangle(annotated, (int(x0), int(y0)), (int(x1), int(y1)), (0, 0, 0), 2)
+                cv2.rectangle(annotated, (int(pre_margin_x0), int(pre_margin_y0)), (int(pre_margin_x1), int(pre_margin_y1)), (0, 0, 255), 3)
+                # draw final crop box post-margin (gray)
+                cv2.rectangle(annotated, (int(x0), int(y0)), (int(x1), int(y1)), (180, 180, 180), 4)
             except Exception:
                 pass
             temp_dir = self._get_temp_dir()

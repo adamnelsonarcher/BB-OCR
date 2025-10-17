@@ -28,16 +28,16 @@
                         <button id="test-model" type="button" title="Ping selected backend/model">Test Model</button>
                         <label>Backend:</label>
                         <select id="backend">
-                            <option value="ollama" selected>ollama (local)</option>
+                            <option value="ollama">ollama (local)</option>
                             <option value="openai">openai (GPT)</option>
-                            <option value="gemini">gemini</option>
+                            <option value="gemini" selected>gemini</option>
                         </select>
                         <label>OCR:</label>
                         <select id="ocr">
                             <option value="easyocr" selected>easyocr</option>
                             <option value="tesseract">tesseract</option>
                         </select>
-                        <label><input type="checkbox" id="run-ocr" checked> run OCR</label>
+                        <label><input type="checkbox" id="run-ocr"> run OCR</label>
                         <label><input type="checkbox" id="preproc" checked> preprocessing</label>
                     </div>
                     <div class="row">
@@ -56,7 +56,7 @@
                         <label>Edge crop (% each side):</label>
                         <input type="range" id="edge-crop" min="0" max="45" step="1" value="10">
                         <span id="edge-crop-val">10%</span>
-                        <label><input type="checkbox" id="auto-crop"> auto text crop</label>
+                        <label><input type="checkbox" id="auto-crop" checked> auto text crop</label>
                     </div>
                 </section>
                 <section class="result block">

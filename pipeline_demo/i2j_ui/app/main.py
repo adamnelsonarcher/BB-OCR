@@ -611,14 +611,14 @@ def _compute_default_ocr_indices(n: int) -> List[int]:
 
 @app.post("/api/process_image")
 async def process_image(
-	image: UploadFile = File(...),
-	model: str = Form("gemma3:4b"),
-	ocr_engine: str = Form("easyocr"),
-	run_ocr: bool = Form(True),
-	use_preprocessing: bool = Form(True),
-	edge_crop: float = Form(0.0),
-	crop_ocr: bool = Form(True),
-    llm_backend: str = Form("ollama"),
+    image: UploadFile = File(...),
+    model: str = Form("gemini-2.5-flash"),
+    ocr_engine: str = Form("easyocr"),
+    run_ocr: bool = Form(False),
+    use_preprocessing: bool = Form(True),
+    edge_crop: float = Form(0.0),
+    crop_ocr: bool = Form(True),
+    llm_backend: str = Form("gemini"),
 ):
 	if image.content_type is None or not image.content_type.startswith("image/"):
 		raise HTTPException(status_code=400, detail="Uploaded file must be an image")
@@ -658,14 +658,14 @@ async def process_image(
 
 @app.post("/api/process_images")
 async def process_images(
-	images: List[UploadFile] = File(...),
-	model: str = Form("gemma3:4b"),
-	ocr_engine: str = Form("easyocr"),
-	run_ocr: bool = Form(True),
-	use_preprocessing: bool = Form(True),
-	edge_crop: float = Form(0.0),
-	crop_ocr: bool = Form(True),
-    llm_backend: str = Form("ollama"),
+    images: List[UploadFile] = File(...),
+    model: str = Form("gemini-2.5-flash"),
+    ocr_engine: str = Form("easyocr"),
+    run_ocr: bool = Form(False),
+    use_preprocessing: bool = Form(True),
+    edge_crop: float = Form(0.0),
+    crop_ocr: bool = Form(True),
+    llm_backend: str = Form("gemini"),
 ):
 	if not images:
 		raise HTTPException(status_code=400, detail="No images uploaded")

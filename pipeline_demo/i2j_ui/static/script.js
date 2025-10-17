@@ -138,19 +138,9 @@ async function init() {
     document.querySelector('.video-panel').classList.add('disabled');
   }
 
-  // Load models
-  try {
-    const data = await fetch('/api/models').then(r => r.json());
-    const models = data.models || [];
-    ollamaModels = models;
-    modelSel.innerHTML = '';
-    for (const m of ollamaModels) {
-      const opt = document.createElement('option');
-      opt.value = m; opt.textContent = m;
-      if (m.startsWith('gemma3:4b')) opt.selected = true;
-      modelSel.appendChild(opt);
-    }
-  } catch {}
+  // Load initial backend+model defaults to Gemini 2.5 flash
+  backendSel.value = 'gemini';
+  setModelOptionsForBackend('gemini');
 
   // Enforce model selection based on backend choice
   function enforceModelByBackend() {
@@ -206,8 +196,12 @@ async function init() {
     }
     appendUiLog('[ui] backend=ollama → model options set to local list');
   }
-  backendSel.addEventListener('change', () => setModelOptionsForBackend(backendSel.value || 'ollama'));
-  setModelOptionsForBackend(backendSel.value || 'ollama');
+  backendSel.addEventListener('change', () => setModelOptionsForBackend(backendSel.value || 'gemini'));
+  setModelOptionsForBackend(backendSel.value || 'gemini');
+
+  // Default toggles: run OCR off, auto-crop on
+  runOcrChk.checked = false;
+  autoCropChk.checked = true;
 
   // Load examples
   try {
