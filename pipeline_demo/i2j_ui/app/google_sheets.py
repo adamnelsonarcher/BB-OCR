@@ -5,6 +5,18 @@ from typing import Any, Dict, Optional
 _CLIENT = None
 _SHEET = None
 
+# Target 8-column table header
+_TABLE8_HEADER = [
+    "Book Title",
+    "Author",
+    "Year",
+    "Publisher",
+    "Has ISBN",
+    "Link Found",
+    "Accept/Reject",
+    "Comments",
+]
+
 
 def _load_client():
     global _CLIENT
@@ -48,7 +60,7 @@ def _load_sheet():
             ws = sh.worksheet(worksheet_name)
         except Exception:
             ws = sh.add_worksheet(title=worksheet_name, rows="1000", cols="20")
-            # Best-effort: add header row
+            # Best-effort: add default header (16-col audit sheet)
             try:
                 ws.append_row([
                     "timestamp_iso",
@@ -111,6 +123,46 @@ def append_row(
     prov = offer.get("provider") if isinstance(offer, dict) else None
     amt = offer.get("amount") if isinstance(offer, dict) else None
     cur = offer.get("currency") if isinstance(offer, dict) else None
+    # Decide format by inspecting the header row
+    try:
+        header_values = ws.row_values(1) if hasattr(ws, 'row_values') else []
+    except Exception:
+        header_values = []
+
+    def _extract_year(v: Optional[str]) -> str:
+        if not v:
+            return ""
+        try:
+            import re
+            m = re.search(r"(18|19|20)\d{2}", str(v))
+            return m.group(0) if m else ""
+        except Exception:
+            return ""
+
+    # 8-column table format
+    if header_values and header_values[:len(_TABLE8_HEADER)] == _TABLE8_HEADER:
+        has_isbn = "yes" if (isbn_13 or isbn_10) else "no"
+        link_found = "yes" if (
+            (isinstance(offer, dict) and (offer.get("url") or offer.get("info_url")))
+            or (isinstance(md, dict) and (md.get("info_url") or md.get("source_url")))
+        ) else "no"
+        decision = "accept" if str(action).lower().startswith("approv") else "reject"
+        try:
+            ws.append_row([
+                title or "",
+                authors_csv or "",
+                _extract_year(publication_date),
+                publisher or "",
+                has_isbn,
+                link_found,
+                decision,
+                comment or "",
+            ])
+            return True
+        except Exception:
+            return False
+
+    # Default: 16-column audit sheet
     try:
         ws.append_row([
             ts,

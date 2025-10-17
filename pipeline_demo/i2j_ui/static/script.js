@@ -636,24 +636,43 @@ fileInput.addEventListener('change', async (e) => {
 });
 
 btnAccept.addEventListener('click', async () => {
-  if (!lastId) return;
-  const metadata = readTableToObject();
-  const notes = prompt('Add a note (optional):') || '';
-  const resp = await fetch('/api/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: lastId, metadata, notes }) });
-  const data = await resp.json();
-  if (!resp.ok) {
-    statusEl.textContent = 'Save failed';
+  if (!lastId) {
+    statusEl.textContent = 'Nothing to accept yet';
     return;
   }
-  statusEl.textContent = `Saved → ${data.path}`;
-  // Switch to pricing tab and post the accepted metadata to the iframe
+  const metadata = readTableToObject();
+  const notes = prompt('Add a note (optional):') || '';
   try {
-    switchTab('pricing');
-    const iframe = document.querySelector('#panel-pricing iframe');
-    if (iframe && iframe.contentWindow) {
-      iframe.contentWindow.postMessage({ type: 'scannerAccepted', id: lastId, metadata }, '*');
+    statusEl.textContent = 'Saving...';
+    const resp = await fetch('/api/accept', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: lastId, metadata, notes }) });
+    const data = await resp.json();
+    if (!resp.ok) {
+      statusEl.textContent = 'Save failed';
+      errorEl.textContent = data.detail || data.error || 'Unknown error';
+      errorEl.classList.remove('hidden');
+      return;
     }
-  } catch {}
+    statusEl.textContent = `Saved → ${data.path}`;
+    // Switch to pricing tab and post the accepted metadata to the iframe
+    try {
+      switchTab('pricing');
+      const iframe = document.querySelector('#panel-pricing iframe');
+      if (iframe) {
+        const send = () => {
+          try { iframe.contentWindow && iframe.contentWindow.postMessage({ type: 'scannerAccepted', id: lastId, metadata }, '*'); } catch {}
+        };
+        if (iframe.contentWindow && iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+          send();
+        } else {
+          iframe.addEventListener('load', send, { once: true });
+        }
+      }
+    } catch {}
+  } catch (e) {
+    statusEl.textContent = 'Save failed';
+    errorEl.textContent = String(e);
+    errorEl.classList.remove('hidden');
+  }
 });
 
 btnReject.addEventListener('click', async () => {

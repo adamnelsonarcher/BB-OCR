@@ -8,6 +8,13 @@ const btnLoad = document.getElementById('btnLoad');
 const reqTable = document.getElementById('reqTable');
 const respTable = document.getElementById('respTable');
 const mergeTable = document.getElementById('mergeTable');
+const reviewCommentEl = document.getElementById('review-comment');
+const approveBtn = document.getElementById('approve-final');
+const rejectBtn = document.getElementById('reject-final');
+
+let currentReviewId = null;
+let lastBestOffer = null;
+let lastMerged = null;
 
 async function init() {
   try {
@@ -233,10 +240,56 @@ btnRun.addEventListener('click', async () => {
       console.log('[pricing-ui] Merged price now:', merged.price);
     }
     mergeTable.innerHTML = toTable(merged);
+    lastBestOffer = best || null;
+    lastMerged = merged || null;
   } catch (e) {
     outEl.textContent = String(e);
   }
 });
+
+// Listen for messages from parent (scanner UI)
+window.addEventListener('message', (ev) => {
+  try {
+    const msg = ev.data || {};
+    if (msg && msg.type === 'scannerAccepted' && msg.metadata) {
+      currentReviewId = msg.id || null;
+      jsonEl.value = JSON.stringify(msg.metadata, null, 2);
+      // Optionally: auto-run lookup using current provider selections
+      btnRun.click();
+    }
+  } catch {}
+});
+
+async function finalize(decision) {
+  const comment = (reviewCommentEl && reviewCommentEl.value) || '';
+  const payload = { id: currentReviewId, decision, comment };
+  if (decision === 'approved') {
+    // Ensure we have merged; if not, try to parse the JSON box
+    if (!lastMerged) {
+      try { lastMerged = JSON.parse(jsonEl.value || '{}'); } catch { lastMerged = {}; }
+    }
+    payload.merged = lastMerged;
+    if (lastBestOffer) payload.best_offer = lastBestOffer;
+  }
+  try {
+    const resp = await fetch('/api/pricing/finalize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      alert(`Finalized: ${decision} → ${data.path || ''}`);
+    } else {
+      alert(`Finalize failed: ${data.detail || data.error || 'unknown error'}`);
+    }
+  } catch (e) {
+    alert(String(e));
+  }
+}
+
+approveBtn.addEventListener('click', () => finalize('approved'));
+rejectBtn.addEventListener('click', () => finalize('rejected'));
 
 init();
 
