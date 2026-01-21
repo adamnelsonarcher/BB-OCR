@@ -20,3 +20,4 @@ pipeline_components/vlm_testing/.venv/Scripts/numpy-config.exe
 /pipeline_demo/i2j_ui/data/uploads
 pipeline_demo/.env
 pipeline_demo/i2j_ui/.env
+.env
