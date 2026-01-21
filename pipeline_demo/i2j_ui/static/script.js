@@ -57,6 +57,7 @@ let jobEventSource = null;
 let examplesIndex = {};
 
 let lastId = null;
+let lastMetadata = null; // last completed job metadata (typed, not DOM-parsed)
 let captureQueue = []; // Array of Blobs
 let tableRows = [];
 let ollamaModels = [];
@@ -246,13 +247,24 @@ function renderTable(obj) {
   const rows = keys.map(k => {
     const v = obj[k];
     let valStr;
-    if (Array.isArray(v)) valStr = v.join(', ');
+    // Preserve the original typed value for Accept/save (arrays should NOT be flattened).
+    // Avoid embedding huge values (like _trace) into HTML attributes.
+    const shouldStore = (k !== '_trace');
+    const jsonValue = shouldStore ? JSON.stringify(v === undefined ? null : v) : null;
+    const dataAttr = (shouldStore && jsonValue !== null) ? ` data-json="${escapeHtml(jsonValue)}"` : '';
+    if (Array.isArray(v)) {
+      valStr = `<pre class="hscroll"${dataAttr}>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
+    }
     else if (v && typeof v === 'object') {
       const preClass = (k === '_trace') ? ' class="hscroll"' : '';
-      valStr = `<pre${preClass}>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
+      valStr = `<pre${preClass}${dataAttr}>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
     }
-    else valStr = (v === null || v === undefined) ? '' : String(v);
-    return `<tr><td>${escapeHtml(k)}</td><td>${valStr}</td></tr>`;
+    else {
+      const display = (v === null || v === undefined) ? '' : String(v);
+      // Wrap primitives so we can attach data-json for accurate parsing on Accept
+      valStr = `<span${dataAttr}>${escapeHtml(display)}</span>`;
+    }
+    return `<tr><td>${escapeHtml(k)}</td><td${dataAttr}>${valStr}</td></tr>`;
   }).join('');
   return `<table class="kv"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -464,8 +476,16 @@ function readTableToObject() {
   for (const tr of rows) {
     const tds = tr.querySelectorAll('td');
     const k = tds[0].textContent.trim();
-    let v = tds[1].textContent.trim();
-    try { v = JSON.parse(v); } catch {}
+    const valTd = tds[1];
+    let v;
+    // Prefer the typed JSON stored by renderTable()
+    const json = (valTd && valTd.dataset && typeof valTd.dataset.json === 'string') ? valTd.dataset.json : null;
+    if (json) {
+      try { v = JSON.parse(json); } catch { v = valTd.textContent.trim(); }
+    } else {
+      v = valTd.textContent.trim();
+      try { v = JSON.parse(v); } catch {}
+    }
     obj[k] = v;
   }
   return obj;
@@ -476,6 +496,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  lastMetadata = null;
   if (consoleLogEl) consoleLogEl.textContent = '';
 
   const fd = new FormData();
@@ -523,6 +544,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
       if (j.status === 'done') {
         statusEl.textContent = `Processed: ${(j.files || []).join(', ')}`;
         if (j.metadata) {
+          lastMetadata = j.metadata;
           metaTable.innerHTML = renderTable(j.metadata);
           renderTrace(j.metadata);
         }
@@ -538,6 +560,7 @@ async function processBatch(blobs) {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  lastMetadata = null;
   if (consoleLogEl) consoleLogEl.textContent = '';
 
   const fd = new FormData();
@@ -587,6 +610,7 @@ async function processBatch(blobs) {
       if (j.status === 'done') {
         statusEl.textContent = `Processed: ${(j.files || []).join(', ')}`;
         if (j.metadata) {
+          lastMetadata = j.metadata;
           metaTable.innerHTML = renderTable(j.metadata);
           renderTrace(j.metadata);
         }
@@ -640,7 +664,8 @@ btnAccept.addEventListener('click', async () => {
     statusEl.textContent = 'Nothing to accept yet';
     return;
   }
-  const metadata = readTableToObject();
+  // Prefer the real typed JSON from the backend; fall back to DOM parsing.
+  const metadata = lastMetadata || readTableToObject();
   const notes = prompt('Add a note (optional):') || '';
   try {
     statusEl.textContent = 'Saving...';
@@ -693,6 +718,7 @@ btnRunExample.addEventListener('click', async () => {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  lastMetadata = null;
   if (consoleLogEl) consoleLogEl.textContent = '';
   initTraceTable(0, []);
 
@@ -731,6 +757,7 @@ btnRunExample.addEventListener('click', async () => {
       if (j.status === 'done') {
         statusEl.textContent = `Processed: ${(j.files || []).join(', ') || id}`;
         if (j.metadata) {
+          lastMetadata = j.metadata;
           metaTable.innerHTML = renderTable(j.metadata);
           renderTrace(j.metadata);
         }
@@ -748,6 +775,7 @@ btnLoadExampleOutput.addEventListener('click', async () => {
   errorEl.classList.add('hidden');
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
+  lastMetadata = null;
 
   const resp = await fetch(`/api/example_output?book_id=${encodeURIComponent(id)}`);
   const data = await resp.json();
@@ -760,6 +788,7 @@ btnLoadExampleOutput.addEventListener('click', async () => {
 
   lastId = data.id;
   statusEl.textContent = `Loaded saved output: ${data.file}`;
+  lastMetadata = data.metadata || null;
   metaTable.innerHTML = renderTable(data.metadata);
   renderTrace(data.metadata);
   actions.classList.remove('hidden');

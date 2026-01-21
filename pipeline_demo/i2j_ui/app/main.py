@@ -31,29 +31,29 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
 PIPELINE_DIR = os.path.join(PROJECT_ROOT, "extractor")
 if PIPELINE_DIR not in sys.path:
-	sys.path.insert(0, PIPELINE_DIR)
+    sys.path.insert(0, PIPELINE_DIR)
 if PROJECT_ROOT not in sys.path:
-	sys.path.insert(0, PROJECT_ROOT)
+    sys.path.insert(0, PROJECT_ROOT)
 # Ensure the inner pricing package root is importable (project_root/pricing_api)
 PRICING_PKG_ROOT = os.path.join(PROJECT_ROOT, "pricing_api")
 if PRICING_PKG_ROOT not in sys.path:
-	sys.path.insert(0, PRICING_PKG_ROOT)
+    sys.path.insert(0, PRICING_PKG_ROOT)
 
 # Pricing aggregator (shared with pricing_api app)
 try:
-	from pricing_api.core.aggregator import aggregate_offers, DEFAULT_PROVIDERS  # type: ignore
+    from pricing_api.core.aggregator import aggregate_offers, DEFAULT_PROVIDERS  # type: ignore
 except Exception:
-	aggregate_offers = None  # type: ignore
-	DEFAULT_PROVIDERS = []  # type: ignore
+    aggregate_offers = None  # type: ignore
+    DEFAULT_PROVIDERS = []  # type: ignore
 
 # Import the existing extractor
 try:
-	from enhanced_extractor import EnhancedBookMetadataExtractor  # type: ignore
+    from enhanced_extractor import EnhancedBookMetadataExtractor  # type: ignore
 except Exception as import_error:
-	EnhancedBookMetadataExtractor = None  # type: ignore
-	IMPORT_ERROR = import_error
+    EnhancedBookMetadataExtractor = None  # type: ignore
+    IMPORT_ERROR = import_error
 else:
-	IMPORT_ERROR = None
+    IMPORT_ERROR = None
 
 # Directories for uploads and results
 DATA_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "data")
@@ -67,7 +67,7 @@ STATIC_DIR = os.path.join(os.path.abspath(os.path.join(CURRENT_DIR, "..")), "sta
 PRICING_STATIC_DIR = os.path.join(PROJECT_ROOT, "pricing_api", "static")
 
 for d in [DATA_DIR, UPLOADS_DIR, ACCEPTED_DIR, REJECTED_DIR, PRICED_DIR, PRICING_REJECTED_DIR]:
-	os.makedirs(d, exist_ok=True)
+    os.makedirs(d, exist_ok=True)
 
 app = FastAPI(title="Image-to-JSON Book Scanner UI", version="0.2.3")
 # Best-effort: prevent proxies from hijacking local calls to Ollama
@@ -397,29 +397,30 @@ def _ollama_quick_ping() -> None:
 
 
 def _validate_backend_model(backend: str, model: str) -> Optional[str]:
-	"""Return error string if the backend/model combo is obviously incompatible; else None.
+    """Return error string if the backend/model combo is obviously incompatible; else None.
 
-	Examples:
-	- gemini backend cannot use Ollama model names like "gemma3:4b"
-	- openai backend cannot use Ollama model names
-	"""
-	b = (backend or "").strip().lower()
-	m = (model or "").strip()
-	if b == "gemini":
-		# Gemini models look like: gemini-1.5-flash, gemini-1.5-pro, gemini-1.5-flash-8b
-		# Clear mismatches: colon in name (Ollama tag), or known non-gemini prefixes
-		if ":" in m or m.lower().startswith(("gemma", "llava", "moondream", "gpt", "openai")):
-			return (
-				"Invalid model for Gemini. Use a Gemini model name, e.g. 'gemini-1.5-flash' or 'gemini-1.5-pro'. Currently using: " + m
-			)
-	if b in ("openai", "gpt", "gpt-4", "gpt-4o", "gpt-4o-mini"):
-		# OpenAI models: gpt-4o, gpt-4o-mini, etc.
-		if ":" in m or m.lower().startswith(("gemma", "llava", "moondream", "gemini")):
-			return (
-				"Invalid model for OpenAI. Use an OpenAI model name, e.g. 'gpt-4o-mini' or 'gpt-4o'. Currently using: " + m
-			)
-	# Ollama: allow anything; server will 404 if unknown
-	return None
+    Examples:
+    - gemini backend cannot use Ollama model names like "gemma3:4b"
+    - openai backend cannot use Ollama model names
+    """
+    b = (backend or "").strip().lower()
+    m = (model or "").strip()
+    if b == "gemini":
+        # Gemini models look like: gemini-2.5-flash, gemini-2.5-pro, gemini-flash-latest, etc.
+        # Clear mismatches: colon in name (Ollama tag), or known non-gemini prefixes
+        if ":" in m or m.lower().startswith(("gemma", "llava", "moondream", "gpt", "openai")):
+            return (
+                "Invalid model for Gemini. Use a Gemini model name, e.g. 'gemini-2.5-flash' or 'gemini-2.5-pro'. Currently using: "
+                + m
+            )
+    if b in ("openai", "gpt", "gpt-4", "gpt-4o", "gpt-4o-mini"):
+        # OpenAI models: gpt-4o, gpt-4o-mini, etc.
+        if ":" in m or m.lower().startswith(("gemma", "llava", "moondream", "gemini")):
+            return (
+                "Invalid model for OpenAI. Use an OpenAI model name, e.g. 'gpt-4o-mini' or 'gpt-4o'. Currently using: " + m
+            )
+    # Ollama: allow anything; server will 404 if unknown
+    return None
 
 @app.on_event("startup")
 async def _on_startup():
@@ -452,64 +453,79 @@ async def job_result(id: str):
         return {"id": id, "status": status, "metadata": job.get("metadata"), "files": job.get("files", [])}
 
 def _run_extractor_job(job_id: str, image_paths: List[str], *, model: str, ocr_engine: str, use_preprocessing: bool, edge_crop: float, crop_ocr: bool, llm_backend: str = "ollama", run_ocr: bool = True) -> None:
-	_JOB_SEM.acquire()
-	try:
-		with _JOBS_LOCK:
-			_JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
-		# Broadcast running status
-		_status_push(job_id, {"status": "running", "files": [os.path.basename(p) for p in image_paths]})
-		# Prepare sinks
-		trace_sink = _make_trace_sink(job_id)
-		with _LOG_LOCK:
-			_LOG_STREAMS.setdefault(job_id, [])
-		# Tee stdout/stderr to per-job log stream
-		_orig_out, _orig_err = sys.stdout, sys.stderr
-		sys.stdout = _JobLogTee(_orig_out, job_id)
-		sys.stderr = _JobLogTee(_orig_err, job_id)
-		try:
-			extractor = _build_extractor(model=model, ocr_engine=ocr_engine, use_preprocessing=use_preprocessing, edge_crop=edge_crop, auto_crop=crop_ocr, llm_backend=llm_backend)
-			ocr_indices = _compute_default_ocr_indices(len(image_paths)) if bool(run_ocr) else []
-			metadata = extractor.extract_metadata_from_images(image_paths, ocr_image_indices=ocr_indices, capture_trace=True, trace_sink=trace_sink)
-		finally:
-			sys.stdout = _orig_out
-			sys.stderr = _orig_err
-		with _JOBS_LOCK:
-			_JOBS[job_id].update({"status": "done", "metadata": metadata})
-		# Broadcast completion with metadata and files
-		_status_push(job_id, {"status": "done", "files": [os.path.basename(p) for p in image_paths], "metadata": metadata})
-	except Exception as e:
-		with _JOBS_LOCK:
-			_JOBS[job_id].update({"status": "error", "error": str(e)})
-		_status_push(job_id, {"status": "error", "error": str(e)})
-	finally:
-		# Trim stored streams to avoid unbounded growth and release semaphore
-		with _TRACE_LOCK:
-			items = _TRACE_STREAMS.get(job_id, [])
-			if len(items) > 200:
-				_TRACE_STREAMS[job_id] = items[-200:]
-		with _LOG_LOCK:
-			logs = _LOG_STREAMS.get(job_id, [])
-			if len(logs) > 1000:
-				_LOG_STREAMS[job_id] = logs[-1000:]
-		try:
-			_JOB_SEM.release()
-		except Exception:
-			pass
+    _JOB_SEM.acquire()
+    try:
+        with _JOBS_LOCK:
+            _JOBS[job_id] = {"status": "running", "files": [os.path.basename(p) for p in image_paths]}
+        # Broadcast running status
+        _status_push(job_id, {"status": "running", "files": [os.path.basename(p) for p in image_paths]})
+        # Prepare sinks
+        trace_sink = _make_trace_sink(job_id)
+        with _LOG_LOCK:
+            _LOG_STREAMS.setdefault(job_id, [])
+        # Tee stdout/stderr to per-job log stream
+        _orig_out, _orig_err = sys.stdout, sys.stderr
+        sys.stdout = _JobLogTee(_orig_out, job_id)
+        sys.stderr = _JobLogTee(_orig_err, job_id)
+        try:
+            extractor = _build_extractor(
+                model=model,
+                ocr_engine=ocr_engine,
+                use_preprocessing=use_preprocessing,
+                edge_crop=edge_crop,
+                auto_crop=crop_ocr,
+                llm_backend=llm_backend,
+            )
+            ocr_indices = _compute_default_ocr_indices(len(image_paths)) if bool(run_ocr) else []
+            metadata = extractor.extract_metadata_from_images(
+                image_paths,
+                ocr_image_indices=ocr_indices,
+                capture_trace=True,
+                trace_sink=trace_sink,
+            )
+        finally:
+            sys.stdout = _orig_out
+            sys.stderr = _orig_err
+        with _JOBS_LOCK:
+            _JOBS[job_id].update({"status": "done", "metadata": metadata})
+        # Broadcast completion with metadata and files
+        _status_push(
+            job_id,
+            {"status": "done", "files": [os.path.basename(p) for p in image_paths], "metadata": metadata},
+        )
+    except Exception as e:
+        with _JOBS_LOCK:
+            _JOBS.setdefault(job_id, {}).update({"status": "error", "error": str(e)})
+        _status_push(job_id, {"status": "error", "error": str(e)})
+    finally:
+        # Trim stored streams to avoid unbounded growth and release semaphore
+        with _TRACE_LOCK:
+            items = _TRACE_STREAMS.get(job_id, [])
+            if len(items) > 200:
+                _TRACE_STREAMS[job_id] = items[-200:]
+        with _LOG_LOCK:
+            logs = _LOG_STREAMS.get(job_id, [])
+            if len(logs) > 1000:
+                _LOG_STREAMS[job_id] = logs[-1000:]
+        try:
+            _JOB_SEM.release()
+        except Exception:
+            pass
 
 
 # CORS for local use
 app.add_middleware(
-	CORSMiddleware,
-	allow_origins=["*"],
-	allow_credentials=True,
-	allow_methods=["*"],
-	allow_headers=["*"],
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 if os.path.isdir(PRICING_STATIC_DIR):
-	app.mount("/pricing_static", StaticFiles(directory=PRICING_STATIC_DIR), name="pricing_static")
+    app.mount("/pricing_static", StaticFiles(directory=PRICING_STATIC_DIR), name="pricing_static")
 
 class AcceptPayload(BaseModel):
 	id: str
@@ -536,11 +552,14 @@ async def root_index():
 
 @app.get("/api/health")
 async def health():
-	return {
-		"status": "ok",
-		"pipeline_imported": IMPORT_ERROR is None,
-		"pipeline_dir": PIPELINE_DIR,
-	}
+    return {
+        "status": "ok",
+        "pipeline_imported": IMPORT_ERROR is None,
+        "pipeline_import_error": (str(IMPORT_ERROR) if IMPORT_ERROR is not None else None),
+        "pipeline_dir": PIPELINE_DIR,
+        "pricing_available": aggregate_offers is not None,
+        "google_sheets_configured": bool(_gs_is_configured()),
+    }
 
 
 @app.get("/api/models")
@@ -563,32 +582,33 @@ async def list_models():
 
 
 def _build_extractor(model: str, ocr_engine: str, use_preprocessing: bool, *, edge_crop: float = 0.0, auto_crop: bool = False, llm_backend: str = "ollama") -> "EnhancedBookMetadataExtractor":
-	if EnhancedBookMetadataExtractor is None:
-		raise RuntimeError(f"Failed to import pipeline: {IMPORT_ERROR}")
-	try:
-		return EnhancedBookMetadataExtractor(
-			model=model,
-			ocr_engine=ocr_engine,
-			use_preprocessing=use_preprocessing,
-			edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
-			crop_for_ocr=bool(auto_crop),
-			warm_model=False,
+    if EnhancedBookMetadataExtractor is None:
+        raise RuntimeError(f"Failed to import pipeline: {IMPORT_ERROR}")
+    try:
+        return EnhancedBookMetadataExtractor(
+            model=model,
+            ocr_engine=ocr_engine,
+            use_preprocessing=use_preprocessing,
+            edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
+            crop_for_ocr=bool(auto_crop),
+            warm_model=False,
             ollama_timeout_seconds=180.0,
             llm_backend=str(llm_backend or "ollama"),
-		)
-	except Exception:
-		# Fallback to tesseract if easyocr fails to init
-		if ocr_engine.lower() == "easyocr":
-			return EnhancedBookMetadataExtractor(
-				model=model,
-				ocr_engine="tesseract",
-				use_preprocessing=use_preprocessing,
-				edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
-				crop_for_ocr=bool(auto_crop),
-				warm_model=False,
-				ollama_timeout_seconds=180.0,
+        )
+    except Exception:
+        # Fallback to tesseract if easyocr fails to init
+        if ocr_engine.lower() == "easyocr":
+            return EnhancedBookMetadataExtractor(
+                model=model,
+                ocr_engine="tesseract",
+                use_preprocessing=use_preprocessing,
+                edge_crop_percent=float(max(0.0, min(45.0, edge_crop))),
+                crop_for_ocr=bool(auto_crop),
+                warm_model=False,
+                ollama_timeout_seconds=180.0,
+                llm_backend=str(llm_backend or "ollama"),
             )
-		raise
+        raise
 
 
 # Simple model connectivity test for current backend (no coercion)
@@ -669,40 +689,54 @@ async def process_image(
     crop_ocr: bool = Form(True),
     llm_backend: str = Form("gemini"),
 ):
-	if image.content_type is None or not image.content_type.startswith("image/"):
-		raise HTTPException(status_code=400, detail="Uploaded file must be an image")
+    if image.content_type is None or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Uploaded file must be an image")
 
-	# Save upload (write to system temp to avoid dev server reloads on file change)
-	timestamp = int(time.time() * 1000)
-	extension = os.path.splitext(image.filename or "upload.jpg")[1] or ".jpg"
-	item_id = f"capture_{timestamp}"
-	tmp_dir = os.path.join(tempfile.gettempdir(), "bb_ocr_ui_uploads")
-	os.makedirs(tmp_dir, exist_ok=True)
-	saved_path = os.path.join(tmp_dir, f"{item_id}{extension}")
-	with open(saved_path, "wb") as f:
-		f.write(await image.read())
+    # Save upload (write to system temp to avoid dev server reloads on file change)
+    timestamp = int(time.time() * 1000)
+    extension = os.path.splitext(image.filename or "upload.jpg")[1] or ".jpg"
+    item_id = f"capture_{timestamp}"
+    tmp_dir = os.path.join(tempfile.gettempdir(), "bb_ocr_ui_uploads")
+    os.makedirs(tmp_dir, exist_ok=True)
+    saved_path = os.path.join(tmp_dir, f"{item_id}{extension}")
+    with open(saved_path, "wb") as f:
+        f.write(await image.read())
 
-	# Reset any prior streams for this id (unlikely for unique ids)
-	with _TRACE_LOCK:
-		_TRACE_STREAMS[item_id] = []
-		_TRACE_SEQ[item_id] = 0
-	with _LOG_LOCK:
-		_LOG_STREAMS[item_id] = []
-		_LOG_SEQ[item_id] = 0
-	# Validate backend/model combo early
-	bad = _validate_backend_model(llm_backend, model)
-	if bad:
-		return JSONResponse(status_code=400, content={"error": bad})
-	# Start background job and return immediately
-	t = threading.Thread(target=_run_extractor_job, args=(item_id, [saved_path]), kwargs={
-		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama'), 'run_ocr': bool(run_ocr)
-	}, daemon=True)
-	t.start()
-	with _JOBS_LOCK:
-		_JOBS[item_id] = {"status": "queued", "files": [os.path.basename(saved_path)]}
-	# Broadcast queued status
-	_status_push(item_id, {"status": "queued", "files": [os.path.basename(saved_path)]})
-	return {"id": item_id, "files": [os.path.basename(saved_path)], "status": "started"}
+    # Reset streams for this id
+    with _TRACE_LOCK:
+        _TRACE_STREAMS[item_id] = []
+        _TRACE_SEQ[item_id] = 0
+    with _LOG_LOCK:
+        _LOG_STREAMS[item_id] = []
+        _LOG_SEQ[item_id] = 0
+    with _STATUS_LOCK:
+        _STATUS_STREAMS[item_id] = []
+        _STATUS_SEQ[item_id] = 0
+    # Validate backend/model combo early
+    bad = _validate_backend_model(llm_backend, model)
+    if bad:
+        return JSONResponse(status_code=400, content={"error": bad})
+    # Mark queued BEFORE starting the thread to avoid races
+    with _JOBS_LOCK:
+        _JOBS[item_id] = {"status": "queued", "files": [os.path.basename(saved_path)]}
+    _status_push(item_id, {"status": "queued", "files": [os.path.basename(saved_path)]})
+    # Start background job and return immediately
+    t = threading.Thread(
+        target=_run_extractor_job,
+        args=(item_id, [saved_path]),
+        kwargs={
+            "model": model,
+            "ocr_engine": ocr_engine,
+            "use_preprocessing": use_preprocessing,
+            "edge_crop": float(edge_crop),
+            "crop_ocr": bool(crop_ocr),
+            "llm_backend": str(llm_backend or "ollama"),
+            "run_ocr": bool(run_ocr),
+        },
+        daemon=True,
+    )
+    t.start()
+    return {"id": item_id, "files": [os.path.basename(saved_path)], "status": "started"}
 
 
 @app.post("/api/process_images")
@@ -716,43 +750,58 @@ async def process_images(
     crop_ocr: bool = Form(True),
     llm_backend: str = Form("gemini"),
 ):
-	if not images:
-		raise HTTPException(status_code=400, detail="No images uploaded")
+    if not images:
+        raise HTTPException(status_code=400, detail="No images uploaded")
 
-	item_id = f"batch_{int(time.time() * 1000)}"
-	saved_paths: List[str] = []
-	for idx, uf in enumerate(images):
-		if uf.content_type is None or not uf.content_type.startswith("image/"):
-			raise HTTPException(status_code=400, detail=f"File {uf.filename} is not an image")
-		ext = os.path.splitext(uf.filename or f"capture_{idx}.jpg")[1] or ".jpg"
-		# Write to system temp to avoid uvicorn reloads
-		tmp_dir = os.path.join(tempfile.gettempdir(), "bb_ocr_ui_uploads")
-		os.makedirs(tmp_dir, exist_ok=True)
-		path = os.path.join(tmp_dir, f"{item_id}_{idx}{ext}")
-		with open(path, "wb") as f:
-			f.write(await uf.read())
-		saved_paths.append(path)
+    item_id = f"batch_{int(time.time() * 1000)}"
+    saved_paths: List[str] = []
+    for idx, uf in enumerate(images):
+        if uf.content_type is None or not uf.content_type.startswith("image/"):
+            raise HTTPException(status_code=400, detail=f"File {uf.filename} is not an image")
+        ext = os.path.splitext(uf.filename or f"capture_{idx}.jpg")[1] or ".jpg"
+        # Write to system temp to avoid uvicorn reloads
+        tmp_dir = os.path.join(tempfile.gettempdir(), "bb_ocr_ui_uploads")
+        os.makedirs(tmp_dir, exist_ok=True)
+        path = os.path.join(tmp_dir, f"{item_id}_{idx}{ext}")
+        with open(path, "wb") as f:
+            f.write(await uf.read())
+        saved_paths.append(path)
 
-	# Reset any prior streams for this id (unlikely for unique ids)
-	with _TRACE_LOCK:
-		_TRACE_STREAMS[item_id] = []
-		_TRACE_SEQ[item_id] = 0
-	with _LOG_LOCK:
-		_LOG_STREAMS[item_id] = []
-		_LOG_SEQ[item_id] = 0
-	# Validate backend/model combo early
-	bad = _validate_backend_model(llm_backend, model)
-	if bad:
-		return JSONResponse(status_code=400, content={"error": bad})
-	# Start background job and return immediately
-	t = threading.Thread(target=_run_extractor_job, args=(item_id, saved_paths), kwargs={
-		'model': model, 'ocr_engine': ocr_engine, 'use_preprocessing': use_preprocessing, 'edge_crop': float(edge_crop), 'crop_ocr': bool(crop_ocr), 'llm_backend': str(llm_backend or 'ollama'), 'run_ocr': bool(run_ocr)
-	}, daemon=True)
-	t.start()
-	with _JOBS_LOCK:
-		_JOBS[item_id] = {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]}
-	_status_push(item_id, {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]})
-	return {"id": item_id, "files": [os.path.basename(p) for p in saved_paths], "status": "started"}
+    # Reset streams for this id
+    with _TRACE_LOCK:
+        _TRACE_STREAMS[item_id] = []
+        _TRACE_SEQ[item_id] = 0
+    with _LOG_LOCK:
+        _LOG_STREAMS[item_id] = []
+        _LOG_SEQ[item_id] = 0
+    with _STATUS_LOCK:
+        _STATUS_STREAMS[item_id] = []
+        _STATUS_SEQ[item_id] = 0
+    # Validate backend/model combo early
+    bad = _validate_backend_model(llm_backend, model)
+    if bad:
+        return JSONResponse(status_code=400, content={"error": bad})
+    # Mark queued BEFORE starting the thread to avoid races
+    with _JOBS_LOCK:
+        _JOBS[item_id] = {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]}
+    _status_push(item_id, {"status": "queued", "files": [os.path.basename(p) for p in saved_paths]})
+    # Start background job and return immediately
+    t = threading.Thread(
+        target=_run_extractor_job,
+        args=(item_id, saved_paths),
+        kwargs={
+            "model": model,
+            "ocr_engine": ocr_engine,
+            "use_preprocessing": use_preprocessing,
+            "edge_crop": float(edge_crop),
+            "crop_ocr": bool(crop_ocr),
+            "llm_backend": str(llm_backend or "ollama"),
+            "run_ocr": bool(run_ocr),
+        },
+        daemon=True,
+    )
+    t.start()
+    return {"id": item_id, "files": [os.path.basename(p) for p in saved_paths], "status": "started"}
 
 
 @app.get("/api/examples")
