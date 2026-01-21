@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="24" fill="#11161c"/>
+  <rect x="10" y="10" width="108" height="108" rx="20" fill="#0e141b" stroke="#223042" stroke-width="4"/>
+  <text x="64" y="76" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace" font-size="44" fill="#7dd3fc">BB</text>
+</svg>

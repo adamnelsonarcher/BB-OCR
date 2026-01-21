@@ -98,7 +98,16 @@ function initTraceTable(count, previews = []) {
 async function init() {
   try {
     const health = await fetch('/api/health').then(r => r.json());
-    envPipeline.textContent = `${health.status} (pipeline:${health.pipeline_imported ? 'ok' : 'error'})`;
+    const parts = [];
+    parts.push(`pipeline:${health.pipeline_imported ? 'ok' : 'error'}`);
+    parts.push(`pricing:${health.pricing_available ? 'ok' : 'off'}`);
+    parts.push(`sheets:${health.google_sheets_configured ? 'on' : 'off'}`);
+    envPipeline.textContent = `${health.status} (${parts.join(', ')})`;
+    if (!health.pipeline_imported && health.pipeline_import_error) {
+      envPipeline.title = String(health.pipeline_import_error);
+    } else {
+      envPipeline.title = '';
+    }
   } catch (e) {
     envPipeline.textContent = 'unavailable';
   }
