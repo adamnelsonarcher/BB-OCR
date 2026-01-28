@@ -164,8 +164,8 @@ class EnhancedBookMetadataExtractor:
         with open(prompt_file, "r", encoding="utf-8") as f:
             self.prompt_template = f.read()
 
-        # Optionally warm the model so first inference is faster and keep session hot
-        if warm_model:
+        # Optionally warm Ollama model only (Gemini/OpenAI don't need this)
+        if warm_model and self.llm_backend == "ollama":
             try:
                 self._warm_ollama_model()
             except Exception as e:

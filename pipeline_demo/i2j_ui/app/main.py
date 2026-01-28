@@ -424,7 +424,14 @@ def _validate_backend_model(backend: str, model: str) -> Optional[str]:
 
 @app.on_event("startup")
 async def _on_startup():
-    # Run the warm-check in a background thread to avoid blocking app startup
+    # CPU-only demo machines typically use Gemini; avoid any automatic Ollama probing.
+    # Enable explicitly via env var if you want local Ollama warm-checks.
+    try:
+        enabled = str(os.getenv("BB_OCR_OLLAMA_WARMUP", "")).strip().lower() in ("1", "true", "yes", "on")
+    except Exception:
+        enabled = False
+    if not enabled:
+        return
     try:
         t = threading.Thread(target=_ollama_quick_ping, daemon=True)
         t.start()
