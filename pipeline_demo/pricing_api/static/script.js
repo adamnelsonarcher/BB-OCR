@@ -256,7 +256,8 @@ window.addEventListener('message', (ev) => {
       currentReviewId = msg.id || null;
       jsonEl.value = JSON.stringify(msg.metadata, null, 2);
       // Optionally: auto-run lookup using current provider selections
-      btnRun.click();
+      const autoRun = (msg.autoRun !== false);
+      if (autoRun) btnRun.click();
     }
   } catch {}
 });

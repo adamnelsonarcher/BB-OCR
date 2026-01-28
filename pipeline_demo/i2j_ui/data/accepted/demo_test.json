@@ -1,0 +1,9 @@
+{
+  "title": "Test Book",
+  "authors": [
+    "A",
+    "B"
+  ],
+  "isbn_13": "0123456789012",
+  "publisher": "X"
+}

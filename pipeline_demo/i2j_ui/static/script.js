@@ -58,7 +58,7 @@ let examplesIndex = {};
 
 let lastId = null;
 let lastMetadata = null; // last completed job metadata (typed, not DOM-parsed)
-let captureQueue = []; // Array of Blobs
+let captureQueue = []; // Array of { blob: Blob, url: string }
 let tableRows = [];
 let ollamaModels = [];
 
@@ -472,9 +472,23 @@ function appendUiLog(line) {
 
 function refreshQueueList() {
   queueList.innerHTML = '';
-  captureQueue.forEach((b, i) => {
+  captureQueue.forEach((item, i) => {
     const li = document.createElement('li');
-    li.textContent = `image ${i+1} (${Math.round(b.size/1024)} KB)`;
+    li.className = 'queue-item';
+
+    const img = document.createElement('img');
+    img.className = 'queue-thumb';
+    img.alt = `capture ${i + 1}`;
+    img.loading = 'lazy';
+    if (item && item.url) img.src = item.url;
+
+    const meta = document.createElement('div');
+    meta.className = 'queue-meta';
+    const kb = item && item.blob ? Math.round(item.blob.size / 1024) : 0;
+    meta.textContent = `image ${i + 1} (${kb} KB)`;
+
+    li.appendChild(img);
+    li.appendChild(meta);
     queueList.appendChild(li);
   });
 }
@@ -632,11 +646,22 @@ async function processBatch(blobs) {
 
 btnCapture.addEventListener('click', async () => {
   const blob = await drawFrameToBlob();
-  captureQueue.push(blob);
+  if (!blob) {
+    statusEl.textContent = 'Capture failed';
+    return;
+  }
+  const url = URL.createObjectURL(blob);
+  captureQueue.push({ blob, url });
   refreshQueueList();
 });
 
 btnClearQueue.addEventListener('click', () => {
+  // Revoke preview URLs to avoid leaking memory
+  try {
+    for (const it of captureQueue) {
+      if (it && it.url) URL.revokeObjectURL(it.url);
+    }
+  } catch {}
   captureQueue = [];
   refreshQueueList();
 });
@@ -652,7 +677,7 @@ btnProcessQueued.addEventListener('click', async () => {
   actions.classList.add('hidden');
   if (consoleLogEl) consoleLogEl.textContent = '';
   initTraceTable(0, []);
-  await processBatch(captureQueue);
+  await processBatch(captureQueue.map(it => it.blob));
 });
 
 fileInput.addEventListener('change', async (e) => {
@@ -697,10 +722,25 @@ btnAccept.addEventListener('click', async () => {
         const url = new URL(iframe.src, window.location.origin);
         url.searchParams.set('key', key);
         iframe.src = url.toString();
+        // Also send the metadata as a backup (no auto-run to avoid double runs)
+        const send = () => {
+          try {
+            iframe.contentWindow && iframe.contentWindow.postMessage(
+              { type: 'scannerAccepted', id: lastId, metadata, autoRun: false },
+              '*'
+            );
+          } catch {}
+        };
+        iframe.addEventListener('load', send, { once: true });
       } else if (iframe) {
         // Fallback to postMessage if key missing
         const send = () => {
-          try { iframe.contentWindow && iframe.contentWindow.postMessage({ type: 'scannerAccepted', id: lastId, metadata }, '*'); } catch {}
+          try {
+            iframe.contentWindow && iframe.contentWindow.postMessage(
+              { type: 'scannerAccepted', id: lastId, metadata, autoRun: true },
+              '*'
+            );
+          } catch {}
         };
         if (iframe.contentWindow && iframe.contentDocument && iframe.contentDocument.readyState === 'complete') send(); else iframe.addEventListener('load', send, { once: true });
       }
@@ -805,6 +845,24 @@ btnLoadExampleOutput.addEventListener('click', async () => {
 
 btnPricing.addEventListener('click', async () => {
   switchTab('pricing');
+  // Carry current scan JSON over even without Accept
+  try {
+    const iframe = document.querySelector('#panel-pricing iframe');
+    const metadata = lastMetadata || null;
+    if (!iframe || !metadata) return;
+    const send = () => {
+      try {
+        iframe.contentWindow && iframe.contentWindow.postMessage(
+          { type: 'scannerAccepted', id: lastId, metadata, autoRun: true },
+          '*'
+        );
+      } catch {}
+    };
+    // Wait for the pricing iframe to load if needed
+    iframe.addEventListener('load', send, { once: true });
+    // Best-effort immediate send (works if already loaded)
+    send();
+  } catch {}
 });
 
 btnTestModel.addEventListener('click', async () => {
