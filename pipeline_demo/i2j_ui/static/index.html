@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Image→JSON Book Scanner</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/style.css?v=4">
+    <link rel="stylesheet" href="/static/style.css?v=5">
 </head>
 <body>
     <header>
@@ -68,35 +68,37 @@
                     <div id="meta-table"></div>
                     <details id="trace" class="trace" open>
                         <summary>Processing Trace</summary>
-                        <h3>Live Output</h3>
-                        <table id="trace-table" class="trace-table">
-                            <thead>
-                                <tr>
-                                    <th>Input image</th>
-                                    <th>Processed image</th>
-                                    <th>OCR output</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                        <div class="trace-grid">
-                            <div>
-                                <h3>OCR Text (all)</h3>
-                                <pre id="trace-ocr-text" class="scroll hscroll"></pre>
-                                <h3>OCR JSON (heuristic)</h3>
-                                <pre id="trace-ocr-json" class="scroll hscroll"></pre>
+                        <div class="trace-body">
+                            <h3>Live Output</h3>
+                            <table id="trace-table" class="trace-table">
+                                <thead>
+                                    <tr>
+                                        <th>Input image</th>
+                                        <th>Processed image</th>
+                                        <th>OCR output</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                            <div class="trace-grid">
+                                <div>
+                                    <h3>OCR Text (all)</h3>
+                                    <pre id="trace-ocr-text" class="scroll hscroll"></pre>
+                                    <h3>OCR JSON (heuristic)</h3>
+                                    <pre id="trace-ocr-json" class="scroll hscroll"></pre>
+                                </div>
                             </div>
+                            <h3>Enhanced Prompt</h3>
+                            <pre id="trace-prompt" class="scroll hscroll"></pre>
+                            <h3>VLM Raw Output</h3>
+                            <pre id="trace-vlm" class="scroll hscroll"></pre>
+                            <h3>Processing Feed</h3>
+                            <div id="trace-steps" class="scroll hscroll"></div>
+                            <h3>Trace JSON (raw)</h3>
+                            <pre id="trace-json" class="scroll hscroll"></pre>
+                            <h3>Console Log</h3>
+                            <pre id="console-log" class="scroll hscroll"></pre>
                         </div>
-                        <h3>Enhanced Prompt</h3>
-                        <pre id="trace-prompt" class="scroll hscroll"></pre>
-                        <h3>VLM Raw Output</h3>
-                        <pre id="trace-vlm" class="scroll hscroll"></pre>
-                        <h3>Processing Feed</h3>
-                        <div id="trace-steps" class="scroll hscroll"></div>
-                        <h3>Trace JSON (raw)</h3>
-                        <pre id="trace-json" class="scroll hscroll"></pre>
-                        <h3>Console Log</h3>
-                        <pre id="console-log" class="scroll hscroll"></pre>
                     </details>
                     <div class="actions hidden" id="actions">
                         <button id="accept" type="button">Accept</button>

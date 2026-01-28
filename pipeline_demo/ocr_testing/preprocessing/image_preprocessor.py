@@ -148,8 +148,8 @@ def preprocess_for_book_cover(image_path, output_path=None):
     preprocessor = ImagePreprocessor()
     preprocessor.load_image(image_path)
     preprocessor.to_grayscale()
-    # CPU-friendly default: avoid upscaling which increases memory/latency
-    preprocessor.resize(scale_factor=1.0)
+    # Slight upscale helps small text extraction (applies before any later downscale/compress).
+    preprocessor.resize(scale_factor=1.5)
     preprocessor.denoise(strength=3)
     preprocessor.increase_contrast(1.9)
     preprocessor.increase_brightness(1.2)

@@ -804,8 +804,10 @@ class EnhancedBookMetadataExtractor:
         for i, (orig_path, model_path) in enumerate(zip(image_paths, model_input_paths), 1):
             print(f"   📷 Encoding image {i}: {os.path.basename(orig_path)} → {os.path.basename(model_path)}")
             idx0 = i - 1
-            max_dim_model = 1600 if idx0 == 0 else 2400
-            jpeg_q = 85 if idx0 == 0 else 90
+            # IMPORTANT: model_path is already post preprocess/crop; only downscale here.
+            # Use a higher cap for non-cover pages to preserve small text for Gemini.
+            max_dim_model = 2000 if idx0 == 0 else 3200
+            jpeg_q = 88 if idx0 == 0 else 95
             encoded = self._encode_image_for_model(model_path, max_dim=max_dim_model, jpeg_quality=jpeg_q)
             images.append(encoded)
             print(f"      ✓ Encoded ({len(encoded)} characters)")
