@@ -38,6 +38,9 @@ section.block { padding: 20px; margin: 0; border: 1px solid #1f2730; background:
 .queue h3 { margin: 0 0 8px 0; font-size: 14px; color:#7dd3fc; }
 .queue ol { margin: 0; padding-left: 18px; }
 .queue li { margin-bottom: 6px; color:#9fb3c8; }
+.queue-item { display: flex; align-items: center; gap: 10px; }
+.queue-thumb { width: 48px; height: 48px; object-fit: cover; border: 1px solid #223042; border-radius: 4px; background: #000; }
+.queue-meta { color:#9fb3c8; }
 
 details.trace { margin-top: 14px; }
 .trace-grid { display:grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
