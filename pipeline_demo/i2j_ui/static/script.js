@@ -209,9 +209,9 @@ async function init() {
   backendSel.addEventListener('change', () => setModelOptionsForBackend(backendSel.value || 'gemini'));
   setModelOptionsForBackend(backendSel.value || 'gemini');
 
-  // Default toggles: run OCR off, auto-crop on
+  // Default toggles: run OCR off, auto-crop off (CPU-friendly)
   runOcrChk.checked = false;
-  autoCropChk.checked = true;
+  autoCropChk.checked = false;
 
   // Load examples
   try {

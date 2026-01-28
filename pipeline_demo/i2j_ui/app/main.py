@@ -712,7 +712,7 @@ async def process_image(
     run_ocr: bool = Form(False),
     use_preprocessing: bool = Form(True),
     edge_crop: float = Form(0.0),
-    crop_ocr: bool = Form(True),
+    crop_ocr: bool = Form(False),
     llm_backend: str = Form("gemini"),
 ):
     if image.content_type is None or not image.content_type.startswith("image/"):
@@ -773,7 +773,7 @@ async def process_images(
     run_ocr: bool = Form(False),
     use_preprocessing: bool = Form(True),
     edge_crop: float = Form(0.0),
-    crop_ocr: bool = Form(True),
+    crop_ocr: bool = Form(False),
     llm_backend: str = Form("gemini"),
 ):
     if not images:
@@ -860,7 +860,7 @@ class ExamplePayload(BaseModel):
 	run_ocr: Optional[bool] = True
 	use_preprocessing: Optional[bool] = True
 	edge_crop: Optional[float] = 0.0
-	crop_ocr: Optional[bool] = True
+	crop_ocr: Optional[bool] = False
 	llm_backend: Optional[str] = "ollama"
 
 

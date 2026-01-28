@@ -141,10 +141,17 @@ class EnhancedBookMetadataExtractor:
         
         # Initialize OCR engines
         if self.ocr_engine == "easyocr":
+            # Default to CPU-only to work on machines without GPUs.
+            # Set BB_OCR_EASYOCR_GPU=1 to enable GPU if desired.
+            try:
+                use_gpu = str(os.getenv("BB_OCR_EASYOCR_GPU", "")).strip().lower() in ("1", "true", "yes", "on")
+            except Exception:
+                use_gpu = False
             lang_key = "en"  # extendable in future
-            if lang_key not in EnhancedBookMetadataExtractor._easyocr_reader_cache:
-                EnhancedBookMetadataExtractor._easyocr_reader_cache[lang_key] = easyocr.Reader(['en'])
-            self.easyocr_reader = EnhancedBookMetadataExtractor._easyocr_reader_cache[lang_key]
+            cache_key = f"{lang_key}|gpu={1 if use_gpu else 0}"
+            if cache_key not in EnhancedBookMetadataExtractor._easyocr_reader_cache:
+                EnhancedBookMetadataExtractor._easyocr_reader_cache[cache_key] = easyocr.Reader(["en"], gpu=use_gpu)
+            self.easyocr_reader = EnhancedBookMetadataExtractor._easyocr_reader_cache[cache_key]
         
         # Load the enhanced prompt from file
         if prompt_file is None:
