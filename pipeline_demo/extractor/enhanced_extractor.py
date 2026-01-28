@@ -225,14 +225,16 @@ class EnhancedBookMetadataExtractor:
             "stream": False
         }
         try:
-            resp = self.session.post(self.ollama_url, json=payload, timeout=(2, 8))
+            # Give CPU-only machines more time to load the model.
+            resp = self.session.post(self.ollama_url, json=payload, timeout=(5, 30))
             # Ignore content; just ensure request completes
             if resp.status_code != 200:
                 raise RuntimeError(f"Warm-up status {resp.status_code}")
             print("🔥 Model warm-up request sent")
         except Exception as e:
-            # Surface as warning to not block processing
-            raise e
+            # Do not block the pipeline for demo usage
+            print(f"Warning: model warm-up failed: {e}; continuing anyway")
+            return
 
     def _auto_crop_text_region(self, image_path: str, margin: int) -> Optional[str]:
         """Detect and crop the dominant text region. Returns new image path or None if no crop.
@@ -488,7 +490,8 @@ class EnhancedBookMetadataExtractor:
                 img = Image.open(crop_image_path)
                 # Use a higher limit for non-cover pages to preserve text fidelity
                 # Cover (index 0) can be downscaled more aggressively; others keep larger size
-                max_dim = 1600 if (image_index is None or image_index == 0) else 3200
+                # CPU-friendly cap for non-cover pages to avoid huge OCR work
+                max_dim = 1600 if (image_index is None or image_index == 0) else 2400
                 if max(img.size) > max_dim:
                     img = img.convert("RGB")
                     img.thumbnail((max_dim, max_dim))
@@ -839,7 +842,8 @@ class EnhancedBookMetadataExtractor:
             for attempt in range(3):
                 try:
                     connect_timeout = 2.5
-                    read_timeout = max(3.0, self.ollama_timeout_seconds - connect_timeout)
+                    # CPU inference can be slow; avoid tiny read timeouts
+                    read_timeout = max(60.0, self.ollama_timeout_seconds - connect_timeout)
                     response = self.session.post(self.ollama_url, json=payload, timeout=(connect_timeout, read_timeout))
                     if response.status_code == 200:
                         break

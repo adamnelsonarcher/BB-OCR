@@ -280,6 +280,9 @@ async function init() {
       examplesIndex[item.id] = { count: item.count };
     }
   } catch {}
+  // Initialize queue UI + button states
+  try { refreshQueueList(); } catch {}
+  setProcessingState(false);
 }
 function updateOverlay() {
   const pct = Number(edgeCropRange.value || 0);
