@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Image→JSON Book Scanner</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/style.css?v=3">
+    <link rel="stylesheet" href="/static/style.css?v=4">
 </head>
 <body>
     <header>
@@ -24,16 +24,16 @@
             <div class="left">
                 <section class="controls block">
                     <div class="row">
-                        <label>Model:</label>
+                        <label for="model">Model:</label>
                         <select id="model"></select>
                         <button id="test-model" type="button" title="Ping selected backend/model">Test Model</button>
-                        <label>Backend:</label>
+                        <label for="backend">Backend:</label>
                         <select id="backend">
                             <option value="ollama">ollama (local)</option>
                             <option value="openai">openai (GPT)</option>
                             <option value="gemini" selected>gemini</option>
                         </select>
-                        <label>OCR:</label>
+                        <label for="ocr">OCR:</label>
                         <select id="ocr">
                             <option value="easyocr" selected>easyocr</option>
                             <option value="tesseract">tesseract</option>
@@ -44,17 +44,18 @@
                     <div class="row">
                         <button id="capture" type="button">Capture</button>
                         <button id="clear-queue" type="button">Clear Queue</button>
+                        <label for="file">Upload:</label>
                         <input type="file" id="file" accept="image/*" multiple>
                         <button id="process-queued" type="button">Process Queued</button>
                     </div>
                     <div class="row">
-                        <label>Examples:</label>
+                        <label for="examples">Examples:</label>
                         <select id="examples"></select>
                         <button id="run-example" type="button">Run Example</button>
                         <button id="load-example-output" type="button">Load Output</button>
                     </div>
                     <div class="row">
-                        <label>Edge crop (% each side):</label>
+                        <label for="edge-crop">Edge crop (% each side):</label>
                         <input type="range" id="edge-crop" min="0" max="45" step="1" value="10">
                         <span id="edge-crop-val">10%</span>
                         <label><input type="checkbox" id="auto-crop"> auto text crop</label>
@@ -62,8 +63,8 @@
                 </section>
                 <section class="result block">
                     <h2>Result</h2>
-                    <div id="status" class="status">Idle</div>
-                    <div id="error" class="error hidden"></div>
+                    <div id="status" class="status" role="status" aria-live="polite">Idle</div>
+                    <div id="error" class="error hidden" role="alert" aria-live="assertive"></div>
                     <div id="meta-table"></div>
                     <details id="trace" class="trace" open>
                         <summary>Processing Trace</summary>
@@ -112,7 +113,7 @@
                     </div>
                     <canvas id="canvas" class="hidden"></canvas>
                     <div class="queue">
-                        <h3>Capture Queue</h3>
+                        <h3>Capture Queue <span id="queue-count">(0)</span></h3>
                         <ol id="queue-list"></ol>
                     </div>
                 </section>
@@ -122,11 +123,11 @@
 
     <div id="panel-pricing" class="tab-panel hidden">
         <section class="block" style="padding:0; border:0; background:transparent;">
-            <iframe class="iframe-full" src="/pricing_embed"></iframe>
+            <iframe class="iframe-full" src="/pricing_embed" title="Pricing lookup"></iframe>
         </section>
     </div>
 
-    <script src="/static/script.js?v=10" defer></script>
+    <script src="/static/script.js?v=11" defer></script>
 </body>
 </html>
 

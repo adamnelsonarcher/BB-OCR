@@ -38,9 +38,34 @@ section.block { padding: 20px; margin: 0; border: 1px solid #1f2730; background:
 .queue h3 { margin: 0 0 8px 0; font-size: 14px; color:#7dd3fc; }
 .queue ol { margin: 0; padding-left: 18px; }
 .queue li { margin-bottom: 6px; color:#9fb3c8; }
-.queue-item { display: flex; align-items: center; gap: 10px; }
-.queue-thumb { width: 48px; height: 48px; object-fit: cover; border: 1px solid #223042; border-radius: 4px; background: #000; }
+.queue-item { display: flex; align-items: center; gap: 8px; }
+.queue-thumb {
+  width: 22px !important;
+  height: 22px !important;
+  max-width: 22px;
+  max-height: 22px;
+  object-fit: cover;
+  border: 1px solid #223042;
+  border-radius: 3px;
+  background: #000;
+  flex: 0 0 auto;
+  display: block;
+}
 .queue-meta { color:#9fb3c8; }
+.queue-remove {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid #223042;
+  color: #9fb3c8;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  line-height: 18px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.queue-remove:hover { border-color:#2a3a4f; color:#cdd9e5; }
+.queue-empty { color:#6b7280; font-style: italic; }
 
 details.trace { margin-top: 14px; }
 .trace-grid { display:grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }

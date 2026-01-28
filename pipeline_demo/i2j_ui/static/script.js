@@ -36,6 +36,7 @@ const pricingRespTable = document.getElementById('pricing-respTable');
 const pricingMergeTable = document.getElementById('pricing-mergeTable');
 const envPipeline = document.getElementById('env-pipeline');
 const queueList = document.getElementById('queue-list');
+const queueCountEl = document.getElementById('queue-count');
 const modelSel = document.getElementById('model');
 const backendSel = document.getElementById('backend');
 const ocrSel = document.getElementById('ocr');
@@ -61,9 +62,61 @@ let lastMetadata = null; // last completed job metadata (typed, not DOM-parsed)
 let captureQueue = []; // Array of { blob: Blob, url: string }
 let tableRows = [];
 let ollamaModels = [];
+let isProcessing = false;
+let previewUrls = []; // blob: preview urls for trace table (revoke to avoid leaks)
+
+function revokeObjectUrlSafe(url) {
+  try {
+    if (url && typeof url === 'string' && url.startsWith('blob:')) URL.revokeObjectURL(url);
+  } catch {}
+}
+
+function clearError() {
+  try {
+    errorEl.textContent = '';
+    errorEl.classList.add('hidden');
+  } catch {}
+}
+
+function clearTraceUI() {
+  try {
+    initTraceTable(0, []);
+    if (traceOcrTextEl) traceOcrTextEl.textContent = '';
+    if (traceOcrJsonEl) traceOcrJsonEl.textContent = '';
+    if (tracePromptEl) tracePromptEl.textContent = '';
+    if (traceVlmEl) traceVlmEl.textContent = '';
+    if (traceStepsEl) traceStepsEl.innerHTML = '';
+    if (traceJsonEl) traceJsonEl.textContent = '';
+  } catch {}
+}
+
+function setProcessingState(processing) {
+  isProcessing = !!processing;
+  try {
+    btnCapture.disabled = isProcessing;
+    btnClearQueue.disabled = isProcessing;
+    fileInput.disabled = isProcessing;
+    btnRunExample.disabled = isProcessing;
+    btnLoadExampleOutput.disabled = isProcessing;
+    btnTestModel.disabled = isProcessing;
+    // action buttons
+    btnAccept.disabled = isProcessing;
+    btnReject.disabled = isProcessing;
+    btnPricing.disabled = isProcessing;
+  } catch {}
+  // Process queued depends on queue length
+  try {
+    btnProcessQueued.disabled = isProcessing || !captureQueue.length;
+  } catch {}
+}
 
 function initTraceTable(count, previews = []) {
   if (!traceTable) return;
+  // Revoke old preview urls to avoid leaking memory
+  try {
+    (previewUrls || []).forEach(revokeObjectUrlSafe);
+  } catch {}
+  previewUrls = Array.isArray(previews) ? previews.filter(u => typeof u === 'string' && u.startsWith('blob:')) : [];
   const tbody = traceTable.querySelector('tbody');
   tbody.innerHTML = '';
   tableRows = [];
@@ -472,6 +525,14 @@ function appendUiLog(line) {
 
 function refreshQueueList() {
   queueList.innerHTML = '';
+  if (queueCountEl) queueCountEl.textContent = `(${captureQueue.length})`;
+  if (!captureQueue.length) {
+    const li = document.createElement('li');
+    li.textContent = 'Queue is empty';
+    li.className = 'queue-empty';
+    queueList.appendChild(li);
+    return;
+  }
   captureQueue.forEach((item, i) => {
     const li = document.createElement('li');
     li.className = 'queue-item';
@@ -487,8 +548,25 @@ function refreshQueueList() {
     const kb = item && item.blob ? Math.round(item.blob.size / 1024) : 0;
     meta.textContent = `image ${i + 1} (${kb} KB)`;
 
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.className = 'queue-remove';
+    removeBtn.title = 'Remove from queue';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try {
+        if (captureQueue[i] && captureQueue[i].url) revokeObjectUrlSafe(captureQueue[i].url);
+        captureQueue.splice(i, 1);
+        refreshQueueList();
+        setProcessingState(isProcessing);
+      } catch {}
+    });
+
     li.appendChild(img);
     li.appendChild(meta);
+    li.appendChild(removeBtn);
     queueList.appendChild(li);
   });
 }
@@ -515,8 +593,14 @@ function readTableToObject() {
 }
 
 async function processSingle(blob, filename = 'capture.jpg') {
+  cleanupStreams();
+  clearError();
+  clearTraceUI();
+  setProcessingState(true);
+  lastId = null;
   statusEl.textContent = 'Uploading...';
   errorEl.classList.add('hidden');
+  errorEl.textContent = '';
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
   lastMetadata = null;
@@ -544,6 +628,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
     statusEl.textContent = 'Error';
     errorEl.textContent = data.error || 'Unknown error';
     errorEl.classList.remove('hidden');
+    setProcessingState(false);
     return;
   }
 
@@ -562,6 +647,7 @@ async function processSingle(blob, filename = 'capture.jpg') {
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
         cleanupStreams();
+        setProcessingState(false);
         return;
       }
       if (j.status === 'done') {
@@ -573,14 +659,21 @@ async function processSingle(blob, filename = 'capture.jpg') {
         }
         actions.classList.remove('hidden');
         cleanupStreams();
+        setProcessingState(false);
       }
     } catch {}
   });
 }
 
 async function processBatch(blobs) {
+  cleanupStreams();
+  clearError();
+  clearTraceUI();
+  setProcessingState(true);
+  lastId = null;
   statusEl.textContent = 'Uploading batch...';
   errorEl.classList.add('hidden');
+  errorEl.textContent = '';
   metaTable.innerHTML = '';
   actions.classList.add('hidden');
   lastMetadata = null;
@@ -610,6 +703,7 @@ async function processBatch(blobs) {
     statusEl.textContent = 'Error';
     errorEl.textContent = data.error || 'Unknown error';
     errorEl.classList.remove('hidden');
+    setProcessingState(false);
     return;
   }
 
@@ -628,6 +722,7 @@ async function processBatch(blobs) {
         errorEl.textContent = j.error || 'Unknown error';
         errorEl.classList.remove('hidden');
         cleanupStreams();
+        setProcessingState(false);
         return;
       }
       if (j.status === 'done') {
@@ -639,6 +734,13 @@ async function processBatch(blobs) {
         }
         actions.classList.remove('hidden');
         cleanupStreams();
+        // Clear capture queue previews (if this run came from camera queue)
+        try {
+          captureQueue.forEach(it => revokeObjectUrlSafe(it && it.url));
+          captureQueue = [];
+          refreshQueueList();
+        } catch {}
+        setProcessingState(false);
       }
     } catch {}
   });
@@ -653,17 +755,19 @@ btnCapture.addEventListener('click', async () => {
   const url = URL.createObjectURL(blob);
   captureQueue.push({ blob, url });
   refreshQueueList();
+  setProcessingState(isProcessing);
 });
 
 btnClearQueue.addEventListener('click', () => {
   // Revoke preview URLs to avoid leaking memory
   try {
     for (const it of captureQueue) {
-      if (it && it.url) URL.revokeObjectURL(it.url);
+      if (it && it.url) revokeObjectUrlSafe(it.url);
     }
   } catch {}
   captureQueue = [];
   refreshQueueList();
+  setProcessingState(isProcessing);
 });
 
 btnProcessQueued.addEventListener('click', async () => {
@@ -671,24 +775,12 @@ btnProcessQueued.addEventListener('click', async () => {
     statusEl.textContent = 'Queue empty';
     return;
   }
-  // Clear previous results/logs/trace before starting a new batch
-  errorEl.classList.add('hidden');
-  metaTable.innerHTML = '';
-  actions.classList.add('hidden');
-  if (consoleLogEl) consoleLogEl.textContent = '';
-  initTraceTable(0, []);
   await processBatch(captureQueue.map(it => it.blob));
 });
 
 fileInput.addEventListener('change', async (e) => {
   if (!e.target.files || !e.target.files.length) return;
   const blobs = Array.from(e.target.files);
-  // Clear previous results/logs/trace when loading a new image set
-  errorEl.classList.add('hidden');
-  metaTable.innerHTML = '';
-  actions.classList.add('hidden');
-  if (consoleLogEl) consoleLogEl.textContent = '';
-  initTraceTable(0, []);
   if (blobs.length === 1) await processSingle(blobs[0], blobs[0].name);
   else await processBatch(blobs);
 });

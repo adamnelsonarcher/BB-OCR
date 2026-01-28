@@ -161,8 +161,26 @@ btnRun.addEventListener('click', async () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    if (!resp.ok) {
+      const txt = await resp.text();
+      let detail = txt;
+      try {
+        const parsed = JSON.parse(txt);
+        detail = parsed.detail || parsed.error || detail;
+      } catch {}
+      outEl.textContent = `Lookup failed (${resp.status}): ${detail}`;
+      setReviewActionsEnabled(false);
+      return;
+    }
     const data = await resp.json();
     outEl.textContent = JSON.stringify(data, null, 2);
+    // Surface provider errors in the UI (helps client understand gaps)
+    try {
+      if (data && data.errors && Object.keys(data.errors).length) {
+        const lines = Object.entries(data.errors).map(([p, e]) => `${p}: ${String(e).slice(0, 200)}`);
+        outEl.textContent += '\n\n=== Provider Errors ===\n' + lines.join('\n');
+      }
+    } catch {}
     // Render request table
     reqTable.innerHTML = toTable(data.query || payload);
     // Choose best offer: ONLY consider offers matching the query's publication year.
@@ -254,7 +272,8 @@ btnRun.addEventListener('click', async () => {
     mergeTable.innerHTML = toTable(merged);
     lastBestOffer = best || null;
     lastMerged = merged || null;
-    setReviewActionsEnabled(true);
+    const okMerged = !!(lastMerged && typeof lastMerged === 'object' && Object.keys(lastMerged).length);
+    setReviewActionsEnabled(okMerged);
   } catch (e) {
     outEl.textContent = String(e);
     setReviewActionsEnabled(false);
@@ -320,7 +339,11 @@ async function finalize(decision) {
   if (decision === 'approved') {
     // Ensure we have merged; if not, try to parse the JSON box
     if (!lastMerged) {
-      try { lastMerged = JSON.parse(jsonEl.value || '{}'); } catch { lastMerged = {}; }
+      try { lastMerged = JSON.parse(jsonEl.value || '{}'); } catch { lastMerged = null; }
+    }
+    if (!lastMerged || typeof lastMerged !== 'object' || !Object.keys(lastMerged).length) {
+      alert('Cannot approve: no merged result. Run lookup first.');
+      return;
     }
     payload.merged = lastMerged;
     if (lastBestOffer) payload.best_offer = lastBestOffer;
@@ -331,14 +354,16 @@ async function finalize(decision) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await resp.json();
+    let data = null;
+    try { data = await resp.json(); } catch {}
     if (resp.ok) {
-      alert(`Finalized: ${decision} → ${data.path || ''}`);
+      alert(`Finalized: ${decision} → ${(data && data.path) ? data.path : ''}`);
     } else {
-      alert(`Finalize failed: ${data.detail || data.error || 'unknown error'}`);
+      const msg = (data && (data.detail || data.error)) ? (data.detail || data.error) : 'unknown error';
+      alert(`Finalize failed: ${msg}`);
     }
   } catch (e) {
-    alert(String(e));
+    alert(`Network error: ${String(e)}`);
   }
 }
 
