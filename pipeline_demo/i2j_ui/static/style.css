@@ -32,6 +32,12 @@ section.block { padding: 20px; margin: 0; border: 1px solid #1f2730; background:
 .kv th, .kv td { border: 1px solid #223042; padding: 8px 10px; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; white-space: pre-wrap; }
 .kv th { background:#11161c; color:#9fb3c8; text-align:left; }
 .kv td:first-child { width: 260px; color:#9fb3c8; white-space: normal; }
+.kv pre.trace-cell {
+  /* Make the `_trace` table cell compact but readable */
+  max-height: 140px;
+  overflow: auto;
+  white-space: pre;
+}
 .actions { margin-top: 12px; display:flex; gap: 10px; }
 .video-panel.disabled { opacity: 0.5; }
 .queue { min-width: 240px; }
@@ -68,12 +74,6 @@ section.block { padding: 20px; margin: 0; border: 1px solid #1f2730; background:
 .queue-empty { color:#6b7280; font-style: italic; }
 
 details.trace { margin-top: 14px; }
-.trace-body {
-  /* Keep the trace from taking over the page */
-  max-height: 52vh;
-  overflow-y: auto;
-  padding-right: 6px;
-}
 .trace-grid { display:grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
 .trace-grid > div { min-width: 0; }
 .trace-grid h3 { margin: 10px 0 6px 0; font-size: 14px; color:#7dd3fc; }

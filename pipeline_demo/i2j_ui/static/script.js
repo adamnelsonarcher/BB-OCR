@@ -321,7 +321,7 @@ function renderTable(obj) {
       valStr = `<pre class="hscroll"${dataAttr}>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
     }
     else if (v && typeof v === 'object') {
-      const preClass = (k === '_trace') ? ' class="hscroll"' : '';
+      const preClass = (k === '_trace') ? ' class="hscroll trace-cell"' : '';
       valStr = `<pre${preClass}${dataAttr}>${escapeHtml(JSON.stringify(v, null, 2))}</pre>`;
     }
     else {
