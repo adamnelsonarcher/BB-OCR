@@ -11,12 +11,22 @@ const mergeTable = document.getElementById('mergeTable');
 const reviewCommentEl = document.getElementById('review-comment');
 const approveBtn = document.getElementById('approve-final');
 const rejectBtn = document.getElementById('reject-final');
+const editPriceBtn = document.getElementById('edit-price');
 
 let currentReviewId = null;
 let lastBestOffer = null;
 let lastMerged = null;
 
+function setReviewActionsEnabled(enabled) {
+  try {
+    approveBtn.disabled = !enabled;
+    rejectBtn.disabled = !enabled;
+    if (editPriceBtn) editPriceBtn.disabled = !enabled;
+  } catch {}
+}
+
 async function init() {
+  setReviewActionsEnabled(false);
   try {
     const root = await fetch('/').then(r => r.json());
     envEl.textContent = `status: ${root.status}`;
@@ -135,6 +145,7 @@ function fuzzyTitleMatch(qTitle, oTitle) {
 
 btnRun.addEventListener('click', async () => {
   outEl.textContent = 'Running...';
+  setReviewActionsEnabled(false);
   let payload;
   try {
     payload = JSON.parse(jsonEl.value || '{}');
@@ -243,8 +254,10 @@ btnRun.addEventListener('click', async () => {
     mergeTable.innerHTML = toTable(merged);
     lastBestOffer = best || null;
     lastMerged = merged || null;
+    setReviewActionsEnabled(true);
   } catch (e) {
     outEl.textContent = String(e);
+    setReviewActionsEnabled(false);
   }
 });
 
@@ -255,6 +268,9 @@ window.addEventListener('message', (ev) => {
     if (msg && msg.type === 'scannerAccepted' && msg.metadata) {
       currentReviewId = msg.id || null;
       jsonEl.value = JSON.stringify(msg.metadata, null, 2);
+      lastBestOffer = null;
+      lastMerged = null;
+      setReviewActionsEnabled(false);
       // Optionally: auto-run lookup using current provider selections
       const autoRun = (msg.autoRun !== false);
       if (autoRun) btnRun.click();
@@ -274,10 +290,29 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (data && data.metadata) {
       currentReviewId = data.id || null;
       jsonEl.value = JSON.stringify(data.metadata, null, 2);
+      lastBestOffer = null;
+      lastMerged = null;
+      setReviewActionsEnabled(false);
       btnRun.click();
     }
   } catch {}
 });
+
+if (editPriceBtn) {
+  editPriceBtn.addEventListener('click', () => {
+    if (!lastMerged || typeof lastMerged !== 'object') {
+      alert('Run a lookup first.');
+      return;
+    }
+    const cur = (lastMerged.price && typeof lastMerged.price === 'object') ? (lastMerged.price.currency ?? '') : '';
+    const amt = (lastMerged.price && typeof lastMerged.price === 'object') ? (lastMerged.price.amount ?? '') : '';
+    const nextCur = prompt('Currency (e.g. USD):', String(cur || 'USD')) || '';
+    const nextAmtRaw = prompt('Amount:', String(amt ?? '')) || '';
+    const nextAmt = (nextAmtRaw.trim() === '') ? null : (Number.isNaN(Number(nextAmtRaw)) ? null : Number(nextAmtRaw));
+    lastMerged.price = { currency: (nextCur.trim() || null), amount: nextAmt };
+    mergeTable.innerHTML = toTable(lastMerged);
+  });
+}
 
 async function finalize(decision) {
   const comment = (reviewCommentEl && reviewCommentEl.value) || '';

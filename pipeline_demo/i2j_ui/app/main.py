@@ -542,6 +542,32 @@ class PricingFinalizePayload(BaseModel):
 	best_offer: Optional[Dict[str, Any]] = None
 
 
+def _slugify_filename(s: str) -> str:
+	"""Make a filesystem-safe slug (Windows-friendly)."""
+	try:
+		import re
+		out = re.sub(r"\s+", " ", str(s or "").strip().lower())
+		out = re.sub(r"[^a-z0-9 _.-]+", "", out)
+		out = out.replace(" ", "_")
+		out = re.sub(r"_+", "_", out).strip("._-")
+		return out[:80] if out else ""
+	except Exception:
+		return ""
+
+
+def _pricing_item_id(payload_id: Optional[str], merged: Optional[Dict[str, Any]], ts: int) -> str:
+	# Prefer a readable title-based slug for tracking; fall back to payload id; then ts.
+	title = None
+	if isinstance(merged, dict):
+		title = merged.get("title") or merged.get("book_title")
+	slug = _slugify_filename(str(title or ""))
+	if slug:
+		return f"{slug}_{ts}"
+	if payload_id:
+		return f"{_slugify_filename(payload_id) or payload_id}_{ts}"
+	return f"priced_{ts}"
+
+
 @app.get("/")
 async def root_index():
 	index_path = os.path.join(STATIC_DIR, "index.html")
@@ -1134,7 +1160,8 @@ async def pricing_finalize(payload: PricingFinalizePayload):
 	if decision not in ("approved", "rejected"):
 		raise HTTPException(status_code=400, detail="decision must be 'approved' or 'rejected'")
 	ts = int(time.time() * 1000)
-	item_id = payload.id or f"priced_{ts}"
+	merged_for_name = payload.merged if isinstance(payload.merged, dict) else None
+	item_id = _pricing_item_id(payload.id, merged_for_name, ts)
 	if decision == "approved":
 		merged = payload.merged or {}
 		out_path = os.path.join(PRICED_DIR, f"{item_id}.json")
